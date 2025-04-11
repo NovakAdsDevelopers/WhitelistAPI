@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./api
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://novak:novak@12345@db:5432/novak
+    depends_on:
+      - db
+
+  db:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_USER: novak
+      POSTGRES_PASSWORD: novak@12345
+      POSTGRES_DB: novak
+    ports:
+      - "5432:5432"

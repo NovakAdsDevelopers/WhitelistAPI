@@ -1,0 +1,35 @@
+{
+  "dependencies": {
+    "@prisma/client": "^6.4.1",
+    "apollo-server-core": "^3.13.0",
+    "apollo-server-express": "^3.13.0",
+    "axios": "^1.8.1",
+    "bcryptjs": "^3.0.2",
+    "class-validator": "^0.14.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "graphql": "^16.10.0",
+    "graphql-scalars": "^1.24.1",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^3.0.3",
+    "reflect-metadata": "^0.2.2",
+    "type-graphql": "^2.0.0-rc.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/facebook-nodejs-business-sdk": "^20.0.2",
+    "@types/graphql": "^14.5.0",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^22.13.5",
+    "@types/node-cron": "^3.0.11",
+    "nodemon": "^3.1.9",
+    "prisma": "^6.4.1",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "dev": "nodemon"
+  }
+}
