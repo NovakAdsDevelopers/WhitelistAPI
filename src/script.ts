@@ -252,7 +252,9 @@ async function fetchAdAccountDailySpend(accountId: string) {
     let page = 1;
 
     while (hasNextPage) {
-      console.log(`📄 Buscando página ${page} de gastos para conta ${accountId}...`);
+      console.log(
+        `📄 Buscando página ${page} de gastos para conta ${accountId}...`
+      );
 
       const response = await axios.get(url);
 
@@ -280,7 +282,9 @@ async function fetchAdAccountDailySpend(accountId: string) {
           },
         });
 
-        console.log(`💾 Gasto de ${spend} salvo para ${accountId} em ${day.date_start}`);
+        console.log(
+          `💾 Gasto de ${spend} salvo para ${accountId} em ${day.date_start}`
+        );
       }
 
       if (response.data?.paging?.next) {
@@ -302,7 +306,11 @@ async function fetchAdAccountDailySpend(accountId: string) {
       },
     });
 
-    const total = Math.floor(totalGasto._sum.gasto ?? 0).toString();
+    const gasto = totalGasto._sum.gasto ?? 0;
+
+    const total = Math.floor(
+      gasto instanceof Decimal ? gasto.toNumber() : gasto
+    );
 
     await prisma.adAccount.update({
       where: { id: accountId },
@@ -313,7 +321,10 @@ async function fetchAdAccountDailySpend(accountId: string) {
 
     console.log(`💰 Gasto total atualizado: ${total}`);
   } catch (error) {
-    console.error(`❌ Erro ao buscar gasto diário da conta ${accountId}:`, error);
+    console.error(
+      `❌ Erro ao buscar gasto diário da conta ${accountId}:`,
+      error
+    );
   }
 }
 
