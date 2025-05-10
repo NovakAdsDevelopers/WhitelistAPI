@@ -1,44 +1,44 @@
 import { prisma } from "../../database";
-import { TransacaoInput } from "../inputs/transacao";
+import { TransacaoContaInput } from "../inputs/conta-transacao";
 import { validate } from "class-validator";
 import { BadRequestError } from "../errors/BadRequestError";
 
 export class TransacaoService {
-  async create(data: TransacaoInput) {
+  async create(data: TransacaoContaInput) {
     const errors = await validate(data);
     if (errors.length > 0) {
       throw new BadRequestError("Dados inválidos", errors);
     }
 
-    return await prisma.transacao.create({ data });
+    return await prisma.transacaoConta.create({ data });
   }
 
-  async update(id: number, data: Partial<TransacaoInput>) {
+  async update(id: number, data: Partial<TransacaoContaInput>) {
     const errors = await validate(data);
     if (errors.length > 0) {
       throw new BadRequestError("Dados inválidos para atualização", errors);
     }
 
-    return await prisma.transacao.update({
+    return await prisma.transacaoConta.update({
       where: { id },
       data,
     });
   }
 
   async delete(id: number) {
-    return await prisma.transacao.delete({
+    return await prisma.transacaoConta.delete({
       where: { id },
     });
   }
 
   async getById(id: number) {
-    return await prisma.transacao.findUnique({
+    return await prisma.transacaoConta.findUnique({
       where: { id },
     });
   }
 
   async getAll() {
-    return await prisma.transacao.findMany({
+    return await prisma.transacaoConta.findMany({
       orderBy: { dataTransacao: "desc" },
     });
   }

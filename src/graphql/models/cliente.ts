@@ -4,7 +4,7 @@ import { PaginationInfo } from "./Utils";
 
 @ObjectType()
 export class Cliente {
-  @Field(type => Int)
+  @Field((type) => Int)
   id!: number;
 
   @Field()
@@ -14,12 +14,27 @@ export class Cliente {
   email!: string;
 
   @Field()
+  fee!: string;
+
+  @Field()
+  saldo!: number;
+
+  @Field()
+  depositoTotal!: number;
+
+  @Field()
+  gastoTotal!: number;
+
+  @Field()
+  cnpj!: string;
+
+  @Field()
   criadoEm!: Date;
 
   @Field()
   atualizadoEm!: Date;
 
-  @Field(type => [ClienteContaAnuncio], { nullable: true })
+  @Field((type) => [ClienteContaAnuncio], { nullable: true })
   contasAnuncio!: ClienteContaAnuncio[];
 }
 

@@ -1,31 +1,28 @@
 import { ObjectType, Field, Int, Float } from "type-graphql";
-import { TipoTransacao } from "@prisma/client";
+import { TipoTransacaoCliente } from "@prisma/client";
 
 @ObjectType()
-export class Transacao {
+export class ClienteTransacao {
   @Field(() => Int)
   id!: number;
 
   @Field(() => String)
-  tipo!: TipoTransacao;
+  tipo!: TipoTransacaoCliente;
 
   @Field(() => Float)
   valor!: number;
+
+  @Field(() => Float, { nullable: true })
+  valorAplicado?: number;
 
   @Field(() => Date)
   dataTransacao!: Date;
 
   @Field({ nullable: true })
-  descricao?: string;
+  fee?: string;
 
   @Field(() => Int)
   clienteId!: number;
-
-  @Field({ nullable: true })
-  contaOrigemId?: string;
-
-  @Field({ nullable: true })
-  contaDestinoId?: string;
 
   @Field(() => Int)
   usuarioId!: number;

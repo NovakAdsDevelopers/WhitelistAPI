@@ -1,5 +1,5 @@
 import { InputType, Field } from "type-graphql";
-import { IsEmail, Length } from "class-validator";
+import { IsEmail, IsNumber, IsString, Length } from "class-validator";
 
 @InputType()
 export class ClienteCreateInput {
@@ -10,6 +10,14 @@ export class ClienteCreateInput {
   @Field()
   @IsEmail()
   email!: string;
+
+  @Field()
+  @IsString()
+  fee!: string;
+
+  @Field()
+  @IsString()
+  cnpj!: string;
 }
 
 @InputType()

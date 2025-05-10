@@ -1,6 +1,7 @@
-import { ObjectType, Field, Int } from "type-graphql";
+import { ObjectType, Field, Int, Float } from "type-graphql";
 import { ContasAnuncio } from "./conta-anuncio"; // Importe o tipo de AdAccount se necessário
 import { PaginationInfo } from "./Utils";
+import { Decimal } from "@prisma/client/runtime/library";
 
 @ObjectType()
 export class ClienteContaAnuncio {
@@ -20,10 +21,16 @@ export class ClienteContaAnuncio {
   fimAssociacao!: Date;
 
   @Field()
-  ativo!: Boolean;
+  ativo!: boolean;
+
+  @Field(type => Float) // Ajustado para Float
+  saldo!: number;       // Ajustado para number
+
+  @Field(type => Float) // Ajustado para Float
+  depositoTotal!: number; // Ajustado para number
 
   @Field()
-  historico!: Boolean;
+  historico!: boolean;
 
   @Field(type => ContasAnuncio)
   contaAnuncio!: ContasAnuncio;
@@ -33,6 +40,15 @@ export class ClienteContaAnuncio {
 export class SetClienteContaAnuncioResponse {
   @Field(() => [ClienteContaAnuncio])
   associacoes!: ClienteContaAnuncio[];
+}
+
+@ObjectType()
+export class SetTransacaoClienteContaAnuncioResponse {
+  @Field(type => Int)
+  id!: number;
+
+  @Field(type => Int)
+  clienteId!: number;
 }
 
 @ObjectType()

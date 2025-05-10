@@ -1,10 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
+model Usuario {
+  id                Int                @id @default(autoincrement())
+  nome              String
+  email             String             @unique
+  senha             String
+  tipo              TipoUsuario        @default(USUARIO)
+  criadoEm          DateTime           @default(now())
+  atualizadoEm      DateTime           @updatedAt
+  transacoesCliente TransacaoCliente[]
+  transacoesConta   TransacaoConta[]
+}
+
+model Cliente {
+  id                Int                   @id @default(autoincrement())
+  nome              String
+  email             String                @unique
+  saldo             Decimal               @default(0) @db.Decimal(18, 2)
+  depositoTotal     Decimal               @default(0) @db.Decimal(18, 2)
+  gastoTotal        Decimal               @default(0) @db.Decimal(18, 2)
+  cnpj              String
+  fee               String
+  criadoEm          DateTime              @default(now())
+  atualizadoEm      DateTime              @updatedAt
+  contasAnuncio     ClienteContaAnuncio[]
+  transacoesCliente TransacaoCliente[]
+}
+
+model AdAccount {
+  id            String @id @map("account_id")
+  nome          String @map("name")
+  status        Int    @map("account_status")
+  moeda         String @map("currency")
+  fusoHorario   String @map("timezone_name")
+  gastoAPI      String @map("amount_spent")
+  depositoTotal String @default("0")
+  gastoTotal    String @default("0")
+  saldo         String @default("0")
+
+  realocacao_entrada_total String @default("0")
+  realocacao_saida_total   String @default("0")
+  alocacao_entrada_total   String @default("0")
+  alocacao_saida_total     String @default("0")
+
+  limiteGasto         String @default("0")
+  saldoMeta           String @default("0")
+  ultimaSincronizacao String
+
+  clientesHistorico ClienteContaAnuncio[] @relation("HistoricoClienteContaAnuncio")
+  GastoDiario       GastoDiario[]
+  transacoesDestino TransacaoConta[]      @relation("ContaDestino")
+  transacoesOrigem  TransacaoConta[]      @relation("ContaOrigem")
+}
+
+model ClienteContaAnuncio {
+  id               Int       @id @default(autoincrement())
+  clienteId        Int
+  contaAnuncioId   String
+
+  inicioAssociacao DateTime  @default(now())
+  fimAssociacao    DateTime?
+
+  ativo            Boolean   @default(true)
+  historico        Boolean   @default(false)
+
+  gastoTotal       String @default("0")
+  saldo            String @default("0")
+  depositoTotal    String @default("0")
+
+  realocacao_entrada String @default("0")
+  realocacao_saida   String @default("0")
+  alocacao_entrada   String @default("0")
+  alocacao_saida     String @default("0")
+
+  limiteGasto         String? @map("spend_cap")
+  saldoMeta           String? @map("balance")
+  ultimaSincronizacao String?
+
+  cliente      Cliente   @relation(fields: [clienteId], references: [id])
+  contaAnuncio AdAccount @relation("HistoricoClienteContaAnuncio", fields: [contaAnuncioId], references: [id])
+
+  @@unique([clienteId, contaAnuncioId, inicioAssociacao])
+}
+
+model TransacaoCliente {
+  id            Int                  @id @default(autoincrement())
+  tipo          TipoTransacaoCliente
+  valor         Decimal              @db.Decimal(18, 2)
+  dataTransacao DateTime             @default(now())
+  fee           String?
+  valorAplicado Decimal?             @db.Decimal(18, 2)
+  clienteId     Int
+  usuarioId     Int
+  createdAt     DateTime             @default(now())
+
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([clienteId, dataTransacao])
+}
+
+model TransacaoConta {
+  id             Int                @id @default(autoincrement())
+  tipo           TipoTransacaoConta
+  valor          Decimal            @db.Decimal(18, 2)
+  dataTransacao  DateTime           @default(now())
+  contaOrigemId  String?
+  contaDestinoId String?
+  usuarioId      Int
+  contaDestino   AdAccount?         @relation("ContaDestino", fields: [contaDestinoId], references: [id])
+  contaOrigem    AdAccount?         @relation("ContaOrigem", fields: [contaOrigemId], references: [id])
+  usuario        Usuario            @relation(fields: [usuarioId], references: [id])
+
+  @@index([dataTransacao])
+}
+
+model GastoDiario {
+  id             Int       @id @default(autoincrement())
+  contaAnuncioId String
+  data           DateTime
+  gasto          Decimal   @db.Decimal(18, 2)
+  contaAnuncio   AdAccount @relation(fields: [contaAnuncioId], references: [id])
+
+  @@unique([contaAnuncioId, data])
+  @@index([contaAnuncioId, data])
 }
 
 enum TipoUsuario {
@@ -13,102 +139,13 @@ enum TipoUsuario {
   USUARIO
 }
 
-enum TipoTransacao {
-  ENTRADA // Dinheiro depositado mas ainda não alocado
-  ENTRADA_ALOCADA // Dinheiro alocado diretamente numa conta
-  REALOCACAO // Dinheiro movido entre contas
-  SAIDA_ALOCADA // Dinheiro retirado de uma conta
-  SAIDA // Dinheiro retirado do cliente (sem ligação com conta)
+enum TipoTransacaoCliente {
+  ENTRADA
+  SAIDA
 }
 
-model Usuario {
-  id           Int         @id @default(autoincrement())
-  nome         String
-  email        String      @unique
-  senha        String
-  tipo         TipoUsuario @default(USUARIO)
-  criadoEm     DateTime    @default(now())
-  atualizadoEm DateTime    @updatedAt
-
-  transacoes Transacao[] // <- Campo de volta da relação
-}
-
-model Cliente {
-  id            Int     @id @default(autoincrement())
-  nome          String
-  email         String  @unique
-  saldo         Decimal @default(0) @db.Decimal(10, 2)
-  depositoTotal Decimal @default(0) @db.Decimal(10, 2)
-  gastoTotal    Decimal @default(0) @db.Decimal(10, 2)
-
-  criadoEm     DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
-
-  contasAnuncio ClienteContaAnuncio[]
-  Transacao     Transacao[]
-}
-
-model AdAccount {
-  id          String @id @map("account_id")
-  nome        String @map("name")
-  status      Int    @map("account_status")
-  moeda       String @map("currency")
-  fusoHorario String @map("timezone_name")
-  gastoAPI    String @map("amount_spent") // valor vindo da API externa
-
-  depositoTotal Decimal @default(0) @db.Decimal(10, 2)
-  gastoTotal    Decimal @default(0) @db.Decimal(10, 2)
-  saldo         Decimal @default(0) @db.Decimal(10, 2)
-
-  clientesHistorico ClienteContaAnuncio[] @relation("HistoricoClienteContaAnuncio")
-  transacoesOrigem  Transacao[]           @relation("ContaOrigem")
-  transacoesDestino Transacao[]           @relation("ContaDestino")
-  GastoDiario       GastoDiario[]
-}
-
-model ClienteContaAnuncio {
-  id               Int       @id @default(autoincrement())
-  clienteId        Int
-  contaAnuncioId   String
-  inicioAssociacao DateTime  @default(now())
-  fimAssociacao    DateTime?
-  ativo            Boolean   @default(true)
-  cliente          Cliente   @relation(fields: [clienteId], references: [id])
-  contaAnuncio     AdAccount @relation(fields: [contaAnuncioId], references: [id], name: "HistoricoClienteContaAnuncio")
-
-  historico Boolean @default(false)
-
-  @@unique([clienteId, contaAnuncioId, inicioAssociacao])
-}
-
-model Transacao {
-  id            Int           @id @default(autoincrement())
-  tipo          TipoTransacao
-  valor         Decimal       @db.Decimal(10, 2)
-  dataTransacao DateTime      @default(now())
-  descricao     String?
-
-  clienteId      Int
-  contaOrigemId  String? // usado em REALOCACAO, SAIDA_ALOCADA
-  contaDestinoId String? // usado em ENTRADA_ALOCADA, REALOCACAO
-  usuarioId      Int
-
-  cliente      Cliente    @relation(fields: [clienteId], references: [id])
-  contaOrigem  AdAccount? @relation("ContaOrigem", fields: [contaOrigemId], references: [id])
-  contaDestino AdAccount? @relation("ContaDestino", fields: [contaDestinoId], references: [id])
-  usuario      Usuario    @relation(fields: [usuarioId], references: [id])
-
-  @@index([clienteId, dataTransacao])
-}
-
-model GastoDiario {
-  id             Int      @id @default(autoincrement())
-  contaAnuncioId String
-  data           DateTime
-  gasto          Decimal  @db.Decimal(10, 2)
-
-  contaAnuncio AdAccount @relation(fields: [contaAnuncioId], references: [id])
-
-  @@unique([contaAnuncioId, data]) // Evita duplicação de dados por dia/conta
-  @@index([contaAnuncioId, data])
+enum TipoTransacaoConta {
+  ENTRADA
+  SAIDA
+  REALOCACAO
 }

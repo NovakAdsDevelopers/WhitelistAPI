@@ -2,7 +2,10 @@
 CREATE TYPE "TipoUsuario" AS ENUM ('ADMIN', 'GERENTE', 'USUARIO');
 
 -- CreateEnum
-CREATE TYPE "TipoTransacao" AS ENUM ('ENTRADA', 'ENTRADA_ALOCADA', 'REALOCACAO', 'SAIDA_ALOCADA', 'SAIDA');
+CREATE TYPE "TipoTransacaoCliente" AS ENUM ('ENTRADA', 'SAIDA');
+
+-- CreateEnum
+CREATE TYPE "TipoTransacaoConta" AS ENUM ('ENTRADA', 'SAIDA', 'REALOCACAO');
 
 -- CreateTable
 CREATE TABLE "Usuario" (
@@ -25,6 +28,8 @@ CREATE TABLE "Cliente" (
     "saldo" DECIMAL(10,2) NOT NULL DEFAULT 0,
     "depositoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
     "gastoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "cnpj" TEXT NOT NULL,
+    "fee" TEXT NOT NULL,
     "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizadoEm" TIMESTAMP(3) NOT NULL,
 
@@ -55,23 +60,40 @@ CREATE TABLE "ClienteContaAnuncio" (
     "fimAssociacao" TIMESTAMP(3),
     "ativo" BOOLEAN NOT NULL DEFAULT true,
     "historico" BOOLEAN NOT NULL DEFAULT false,
+    "gastoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "saldo" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "depositoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
 
     CONSTRAINT "ClienteContaAnuncio_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "Transacao" (
+CREATE TABLE "TransacaoCliente" (
     "id" SERIAL NOT NULL,
-    "tipo" "TipoTransacao" NOT NULL,
+    "tipo" "TipoTransacaoCliente" NOT NULL,
+    "valor" DECIMAL(10,2) NOT NULL,
+    "dataTransacao" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "fee" TEXT,
+    "valorAplicado" DECIMAL(10,2),
+    "clienteId" INTEGER NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TransacaoCliente_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TransacaoConta" (
+    "id" SERIAL NOT NULL,
+    "tipo" "TipoTransacaoConta" NOT NULL,
     "valor" DECIMAL(10,2) NOT NULL,
     "dataTransacao" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "descricao" TEXT,
-    "clienteId" INTEGER NOT NULL,
     "contaOrigemId" TEXT,
     "contaDestinoId" TEXT,
     "usuarioId" INTEGER NOT NULL,
 
-    CONSTRAINT "Transacao_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "TransacaoConta_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -94,7 +116,10 @@ CREATE UNIQUE INDEX "Cliente_email_key" ON "Cliente"("email");
 CREATE UNIQUE INDEX "ClienteContaAnuncio_clienteId_contaAnuncioId_inicioAssociac_key" ON "ClienteContaAnuncio"("clienteId", "contaAnuncioId", "inicioAssociacao");
 
 -- CreateIndex
-CREATE INDEX "Transacao_clienteId_dataTransacao_idx" ON "Transacao"("clienteId", "dataTransacao");
+CREATE INDEX "TransacaoCliente_clienteId_dataTransacao_idx" ON "TransacaoCliente"("clienteId", "dataTransacao");
+
+-- CreateIndex
+CREATE INDEX "TransacaoConta_dataTransacao_idx" ON "TransacaoConta"("dataTransacao");
 
 -- CreateIndex
 CREATE INDEX "GastoDiario_contaAnuncioId_data_idx" ON "GastoDiario"("contaAnuncioId", "data");
@@ -109,16 +134,19 @@ ALTER TABLE "ClienteContaAnuncio" ADD CONSTRAINT "ClienteContaAnuncio_clienteId_
 ALTER TABLE "ClienteContaAnuncio" ADD CONSTRAINT "ClienteContaAnuncio_contaAnuncioId_fkey" FOREIGN KEY ("contaAnuncioId") REFERENCES "AdAccount"("account_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Transacao" ADD CONSTRAINT "Transacao_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "Cliente"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TransacaoCliente" ADD CONSTRAINT "TransacaoCliente_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "Cliente"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Transacao" ADD CONSTRAINT "Transacao_contaOrigemId_fkey" FOREIGN KEY ("contaOrigemId") REFERENCES "AdAccount"("account_id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "TransacaoCliente" ADD CONSTRAINT "TransacaoCliente_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Transacao" ADD CONSTRAINT "Transacao_contaDestinoId_fkey" FOREIGN KEY ("contaDestinoId") REFERENCES "AdAccount"("account_id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "TransacaoConta" ADD CONSTRAINT "TransacaoConta_contaDestinoId_fkey" FOREIGN KEY ("contaDestinoId") REFERENCES "AdAccount"("account_id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Transacao" ADD CONSTRAINT "Transacao_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TransacaoConta" ADD CONSTRAINT "TransacaoConta_contaOrigemId_fkey" FOREIGN KEY ("contaOrigemId") REFERENCES "AdAccount"("account_id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TransacaoConta" ADD CONSTRAINT "TransacaoConta_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "GastoDiario" ADD CONSTRAINT "GastoDiario_contaAnuncioId_fkey" FOREIGN KEY ("contaAnuncioId") REFERENCES "AdAccount"("account_id") ON DELETE RESTRICT ON UPDATE CASCADE;

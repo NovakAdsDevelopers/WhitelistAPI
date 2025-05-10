@@ -44,7 +44,13 @@ export class ContasAnuncioService {
       throw new BadRequestError("Invalid data", errors);
     }
 
-    return await prisma.adAccount.create({ data });
+    // Adiciona a data atual no campo exigido
+    const dataComData = {
+      ...data,
+      ultimaSincronizacao: new Date().toISOString(),
+    };
+
+    return await prisma.adAccount.create({ data: dataComData });
   }
 
   async update(id: string, data: Partial<ContasAnuncioInput>) {

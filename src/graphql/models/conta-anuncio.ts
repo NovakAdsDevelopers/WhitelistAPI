@@ -1,6 +1,8 @@
+
 import "reflect-metadata";
 import { ObjectType, Field} from "type-graphql";
 import { PaginationInfo } from "./Utils";
+import { Decimal } from "@prisma/client/runtime/library";
 
 @ObjectType()
 export class ContasAnuncio {
@@ -24,6 +26,21 @@ export class ContasAnuncio {
 
   @Field()
   gastoAPI!: string; 
+
+  @Field()
+  limiteGasto!: string; 
+
+  @Field()
+  saldoMeta!: string; 
+
+  @Field()
+  saldo!: number; 
+
+  @Field()
+  depositoTotal!: number; 
+
+  @Field()
+  ultimaSincronizacao!: string; 
 }
 
 

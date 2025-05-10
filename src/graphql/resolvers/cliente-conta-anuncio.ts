@@ -1,8 +1,15 @@
 import { Resolver, Query, Mutation, Arg } from "type-graphql";
 import { Pagination } from "../inputs/Utils";
-import { ClienteContaAnuncioCreateInput, ClienteContaAnuncioCreateManyInput } from "../inputs/cliente-conta-anuncio";
+import {
+  ClienteContaAnuncioCreateManyInput,
+  TransacaoClienteContaAnuncioInput,
+} from "../inputs/cliente-conta-anuncio";
 import { ClienteContaAnuncioService } from "../services/cliente-conta-anuncio";
-import { ClienteContaAnuncio, ClienteContaAnuncioResult, SetClienteContaAnuncioResponse } from "../models/cliente-conta-anuncio";
+import {
+  ClienteContaAnuncioResult,
+  SetClienteContaAnuncioResponse,
+  SetTransacaoClienteContaAnuncioResponse,
+} from "../models/cliente-conta-anuncio";
 
 @Resolver()
 export class ClienteContaAnuncioResolver {
@@ -11,7 +18,8 @@ export class ClienteContaAnuncioResolver {
   @Query(() => ClienteContaAnuncioResult)
   async GetContasAssociadasPorCliente(
     @Arg("clienteId") clienteId: number,
-    @Arg("pagination", () => Pagination, { nullable: true }) pagination?: Pagination
+    @Arg("pagination", () => Pagination, { nullable: true })
+    pagination?: Pagination
   ) {
     return this.service.findByClienteId(clienteId, pagination);
   }
@@ -21,5 +29,12 @@ export class ClienteContaAnuncioResolver {
     @Arg("data") data: ClienteContaAnuncioCreateManyInput
   ) {
     return this.service.create(data);
+  }
+
+  @Mutation(() => SetTransacaoClienteContaAnuncioResponse)
+  async SetTransacaoClienteContaAnuncio(
+    @Arg("data") data: TransacaoClienteContaAnuncioInput
+  ) {
+    return this.service.push(data);
   }
 }

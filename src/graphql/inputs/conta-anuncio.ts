@@ -22,4 +22,13 @@ export class ContasAnuncioInput {
 
   @Field()
   gastoAPI!: string; 
+
+  @Field()
+  limiteGasto!: string; 
+
+  @Field()
+  saldoMeta!: string; 
+
+  @Field()
+  ultimaSincronizacao!: string; 
 }
