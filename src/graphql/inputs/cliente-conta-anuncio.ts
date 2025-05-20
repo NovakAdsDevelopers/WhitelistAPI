@@ -1,5 +1,5 @@
-import { IsInt } from "class-validator";
-import { InputType, Field, Int, registerEnumType } from "type-graphql";
+import { IsInt, IsNumber } from "class-validator";
+import { InputType, Field, Int, registerEnumType, Float } from "type-graphql";
 
 @InputType()
 export class ClienteContaAnuncioCreateInput {
@@ -43,8 +43,9 @@ export class TransacaoClienteContaAnuncioInput {
   @Field(() => TipoTransacao)
   tipo!: TipoTransacao;
 
-  @Field()
-  valor!: string;
+  @Field(() => Float)
+  @IsNumber()
+  valor!: number;
 
   @Field({ nullable: true })
   contaOrigemId?: number;

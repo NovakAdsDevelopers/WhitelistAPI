@@ -36,17 +36,35 @@ async function saveOrUpdateAdAccounts(adAccounts: any[]) {
       const agora = new Date().toISOString();
 
       if (existingAccount) {
+        const gastoAnterior = new Decimal(existingAccount.gastoAPI || "0");
+        const gastoAtual = new Decimal(account.amount_spent || "0");
+
+        const diferencaGasto = gastoAtual.minus(gastoAnterior);
+
+        let saldoMetaAtualizado = existingAccount.saldoMeta;
+
+        if (diferencaGasto.greaterThan(0)) {
+          const saldoAnterior = new Decimal(existingAccount.saldoMeta || "0");
+          const novoSaldo = saldoAnterior.minus(diferencaGasto);
+
+          saldoMetaAtualizado = novoSaldo.greaterThan(0)
+            ? novoSaldo.toFixed(2)
+            : "0.00";
+        }
+
         const hasChanges =
           existingAccount.nome !== account.name ||
           existingAccount.status !== account.account_status ||
           existingAccount.moeda !== account.currency ||
           existingAccount.fusoHorario !== account.timezone_name ||
           existingAccount.limiteGasto !== account.spend_cap ||
-          existingAccount.saldoMeta !== account.balance ||
-          !existingAccount.gastoTotal.equals(amountSpentDecimal);
+          existingAccount.gastoAPI !== account.amount_spent ||
+          !existingAccount.gastoTotal.equals(amountSpentDecimal) ||
+          saldoMetaAtualizado !== existingAccount.saldoMeta;
 
         if (hasChanges) {
           console.log(`📝 Atualizando conta ${account.account_id}...`);
+
           await prisma.adAccount.update({
             where: { id: account.account_id },
             data: {
@@ -56,16 +74,19 @@ async function saveOrUpdateAdAccounts(adAccounts: any[]) {
               fusoHorario: account.timezone_name,
               gastoTotal: amountSpentDecimal,
               limiteGasto: account.spend_cap,
-              saldoMeta: account.balance,
+              saldoMeta: saldoMetaAtualizado,
+              gastoAPI: account.amount_spent,
               ultimaSincronizacao: agora,
             },
           });
+
           console.log(`✅ Conta ${account.account_id} atualizada com sucesso.`);
         } else {
           console.log(`✅ Conta ${account.account_id} já está atualizada.`);
         }
       } else {
         console.log(`🆕 Criando nova conta ${account.account_id}...`);
+
         await prisma.adAccount.create({
           data: {
             id: account.account_id,
@@ -80,8 +101,15 @@ async function saveOrUpdateAdAccounts(adAccounts: any[]) {
             ultimaSincronizacao: agora,
           },
         });
+
         console.log(`✅ Conta ${account.account_id} cadastrada com sucesso.`);
       }
+
+      // 🔄 Sincroniza os gastos diários APÓS atualizar ou criar a conta
+      await fetchAdAccountDailySpend(
+        account.account_id,
+        existingAccount?.ultimaSincronizacao
+      );
     } catch (error) {
       console.error(`❌ Erro ao processar conta ${account.account_id}:`, error);
     }
@@ -242,10 +270,19 @@ app.post("/sync-ads-by-ids", async (req, res) => {
 });
 
 // Busca e salva gasto diário dos últimos 7 dias
-async function fetchAdAccountDailySpend(accountId: string) {
-  const today = new Date().toISOString().split("T")[0]; // formato: "YYYY-MM-DD"
+async function fetchAdAccountDailySpend(accountId: string, since?: string) {
+  const today = new Date().toISOString().split("T")[0];
+  const startDate = since
+    ? new Date(since).toISOString().split("T")[0]
+    : "2023-01-01";
 
-  let url = `https://graph.facebook.com/v22.0/act_${accountId}/insights?access_token=${token}&fields=spend,date_start&time_increment=1&time_range={"since":"2023-01-01","until":"${today}"}`;
+  console.log(startDate);
+
+  const timeRange = encodeURIComponent(
+    JSON.stringify({ since: startDate, until: today })
+  );
+
+  let url = `https://graph.facebook.com/v22.0/act_${accountId}/insights?access_token=${token}&fields=spend,date_start&time_increment=1&time_range=${timeRange}`;
 
   try {
     let hasNextPage = true;
@@ -253,9 +290,8 @@ async function fetchAdAccountDailySpend(accountId: string) {
 
     while (hasNextPage) {
       console.log(
-        `📄 Buscando página ${page} de gastos para conta ${accountId}...`
+        `📄 Buscando página ${page} de gastos para conta ${accountId} (desde ${startDate})...`
       );
-
       const response = await axios.get(url);
 
       const insights = response.data?.data;
@@ -295,7 +331,6 @@ async function fetchAdAccountDailySpend(accountId: string) {
       }
     }
 
-    // Soma de todos os gastos para atualizar gastoTotal
     console.log(`📊 Recalculando gasto total para a conta ${accountId}...`);
     const totalGasto = await prisma.gastoDiario.aggregate({
       _sum: {
@@ -309,7 +344,7 @@ async function fetchAdAccountDailySpend(accountId: string) {
     const gasto = totalGasto._sum.gasto ?? 0;
 
     const total = Math.floor(
-      gasto instanceof Decimal ? gasto.toNumber() : gasto
+      gasto instanceof Decimal ? gasto.toNumber() : Number(gasto)
     );
 
     await prisma.adAccount.update({
@@ -320,10 +355,10 @@ async function fetchAdAccountDailySpend(accountId: string) {
     });
 
     console.log(`💰 Gasto total atualizado: ${total}`);
-  } catch (error) {
+  } catch (error: any) {
     console.error(
       `❌ Erro ao buscar gasto diário da conta ${accountId}:`,
-      error
+      error.response?.data || error.message || error
     );
   }
 }
@@ -333,60 +368,6 @@ async function fetchDailySpendForAllAccounts() {
   const accounts = await prisma.adAccount.findMany();
   for (const acc of accounts) {
     await fetchAdAccountDailySpend(acc.id);
-  }
-}
-
-// Rota manual para sincronizar gasto diário
-app.get("/sync-daily-spend", async (req, res) => {
-  try {
-    await fetchDailySpendForAllAccounts();
-    res.json({ message: "✅ Gastos diários sincronizados com sucesso." });
-  } catch (error) {
-    res.status(500).json({ error: "Erro ao sincronizar gastos diários." });
-  }
-});
-
-async function getInsights(
-  accountId: string,
-  startDate?: string,
-  endDate?: string
-) {
-  const url = `https://graph.facebook.com/v17.0/act_${accountId}/insights`;
-
-  const params: any = {
-    access_token: token,
-    fields: "spend,date_start",
-    time_increment: 1,
-    limit: 25,
-  };
-
-  if (startDate && endDate) {
-    params.time_range = JSON.stringify({
-      since: startDate,
-      until: endDate,
-    });
-  } else {
-    params.date_preset = "maximum";
-  }
-
-  try {
-    const response = await axios.get(url, { params });
-
-    const insights = response.data;
-
-    if (!insights || insights.length === 0) {
-      console.log(`⚠️ Nenhum insight encontrado para a conta ${accountId}`);
-      return [];
-    }
-
-    console.log(`📈 Insights obtidos para a conta ${accountId}:`, insights);
-    return insights;
-  } catch (error) {
-    console.error(
-      `❌ Erro ao obter insights da conta ${accountId}:`,
-      error || error
-    );
-    return [];
   }
 }
 

@@ -25,9 +25,9 @@ CREATE TABLE "Cliente" (
     "id" SERIAL NOT NULL,
     "nome" TEXT NOT NULL,
     "email" TEXT NOT NULL,
-    "saldo" DECIMAL(10,2) NOT NULL DEFAULT 0,
-    "depositoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
-    "gastoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "saldo" DECIMAL(18,2) NOT NULL DEFAULT 0,
+    "depositoTotal" DECIMAL(18,2) NOT NULL DEFAULT 0,
+    "gastoTotal" DECIMAL(18,2) NOT NULL DEFAULT 0,
     "cnpj" TEXT NOT NULL,
     "fee" TEXT NOT NULL,
     "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -44,9 +44,16 @@ CREATE TABLE "AdAccount" (
     "currency" TEXT NOT NULL,
     "timezone_name" TEXT NOT NULL,
     "amount_spent" TEXT NOT NULL,
-    "depositoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
-    "gastoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
-    "saldo" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "depositoTotal" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "gastoTotal" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "saldo" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "realocacao_entrada_total" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "realocacao_saida_total" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "alocacao_entrada_total" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "alocacao_saida_total" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "limiteGasto" TEXT NOT NULL DEFAULT '0',
+    "saldoMeta" TEXT NOT NULL DEFAULT '0',
+    "ultimaSincronizacao" TEXT NOT NULL,
 
     CONSTRAINT "AdAccount_pkey" PRIMARY KEY ("account_id")
 );
@@ -60,9 +67,16 @@ CREATE TABLE "ClienteContaAnuncio" (
     "fimAssociacao" TIMESTAMP(3),
     "ativo" BOOLEAN NOT NULL DEFAULT true,
     "historico" BOOLEAN NOT NULL DEFAULT false,
-    "gastoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
-    "saldo" DECIMAL(10,2) NOT NULL DEFAULT 0,
-    "depositoTotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "gastoTotal" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "saldo" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "depositoTotal" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "realocacao_entrada" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "realocacao_saida" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "alocacao_entrada" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "alocacao_saida" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "spend_cap" TEXT,
+    "balance" TEXT,
+    "ultimaSincronizacao" TEXT,
 
     CONSTRAINT "ClienteContaAnuncio_pkey" PRIMARY KEY ("id")
 );
@@ -71,10 +85,10 @@ CREATE TABLE "ClienteContaAnuncio" (
 CREATE TABLE "TransacaoCliente" (
     "id" SERIAL NOT NULL,
     "tipo" "TipoTransacaoCliente" NOT NULL,
-    "valor" DECIMAL(10,2) NOT NULL,
+    "valor" DECIMAL(18,2) NOT NULL,
     "dataTransacao" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "fee" TEXT,
-    "valorAplicado" DECIMAL(10,2),
+    "valorAplicado" DECIMAL(18,2),
     "clienteId" INTEGER NOT NULL,
     "usuarioId" INTEGER NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -86,9 +100,8 @@ CREATE TABLE "TransacaoCliente" (
 CREATE TABLE "TransacaoConta" (
     "id" SERIAL NOT NULL,
     "tipo" "TipoTransacaoConta" NOT NULL,
-    "valor" DECIMAL(10,2) NOT NULL,
+    "valor" DECIMAL(18,2) NOT NULL,
     "dataTransacao" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "descricao" TEXT,
     "contaOrigemId" TEXT,
     "contaDestinoId" TEXT,
     "usuarioId" INTEGER NOT NULL,
@@ -101,7 +114,7 @@ CREATE TABLE "GastoDiario" (
     "id" SERIAL NOT NULL,
     "contaAnuncioId" TEXT NOT NULL,
     "data" TIMESTAMP(3) NOT NULL,
-    "gasto" DECIMAL(10,2) NOT NULL,
+    "gasto" DECIMAL(18,2) NOT NULL,
 
     CONSTRAINT "GastoDiario_pkey" PRIMARY KEY ("id")
 );

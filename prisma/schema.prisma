@@ -20,12 +20,17 @@ model Usuario {
 }
 
 model Cliente {
-  id                Int                   @id @default(autoincrement())
-  nome              String
-  email             String                @unique
-  saldo             Decimal               @default(0) @db.Decimal(18, 2)
-  depositoTotal     Decimal               @default(0) @db.Decimal(18, 2)
-  gastoTotal        Decimal               @default(0) @db.Decimal(18, 2)
+  id    Int    @id @default(autoincrement())
+  nome  String
+  email String @unique
+
+  saldo         Decimal @default(0) @db.Decimal(18, 2)
+  depositoTotal Decimal @default(0) @db.Decimal(18, 2)
+  gastoTotal    Decimal @default(0) @db.Decimal(18, 2)
+
+  saldoCliente  Decimal         @default(0) @db.Decimal(18, 2)
+  alocacao Decimal @default(0) @db.Decimal(18, 2)
+
   cnpj              String
   fee               String
   criadoEm          DateTime              @default(now())
@@ -35,12 +40,12 @@ model Cliente {
 }
 
 model AdAccount {
-  id            String @id @map("account_id")
-  nome          String @map("name")
-  status        Int    @map("account_status")
-  moeda         String @map("currency")
-  fusoHorario   String @map("timezone_name")
-  gastoAPI      String @map("amount_spent")
+  id            String  @id @map("account_id")
+  nome          String  @map("name")
+  status        Int     @map("account_status")
+  moeda         String  @map("currency")
+  fusoHorario   String  @map("timezone_name")
+  gastoAPI      String  @map("amount_spent")
   depositoTotal Decimal @default(0) @db.Decimal(16, 2)
   gastoTotal    Decimal @default(0) @db.Decimal(16, 2)
   saldo         Decimal @default(0) @db.Decimal(16, 2)
@@ -61,19 +66,19 @@ model AdAccount {
 }
 
 model ClienteContaAnuncio {
-  id               Int       @id @default(autoincrement())
-  clienteId        Int
-  contaAnuncioId   String
+  id             Int    @id @default(autoincrement())
+  clienteId      Int
+  contaAnuncioId String
 
   inicioAssociacao DateTime  @default(now())
   fimAssociacao    DateTime?
 
-  ativo            Boolean   @default(true)
-  historico        Boolean   @default(false)
+  ativo     Boolean @default(true)
+  historico Boolean @default(false)
 
-  gastoTotal       Decimal @default(0) @db.Decimal(16, 2)
-  saldo            Decimal @default(0) @db.Decimal(16, 2)
-  depositoTotal    Decimal @default(0) @db.Decimal(16, 2)
+  gastoTotal    Decimal @default(0) @db.Decimal(16, 2)
+  saldo         Decimal @default(0) @db.Decimal(16, 2)
+  depositoTotal Decimal @default(0) @db.Decimal(16, 2)
 
   realocacao_entrada Decimal @default(0) @db.Decimal(16, 2)
   realocacao_saida   Decimal @default(0) @db.Decimal(16, 2)

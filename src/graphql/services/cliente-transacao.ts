@@ -36,7 +36,7 @@ export class TransacaoService {
       await prisma.cliente.update({
         where: { id: data.clienteId },
         data: {
-          saldo: { increment: data.valorAplicado },
+          saldoCliente: { increment: data.valorAplicado },
           depositoTotal: { increment: data.valorAplicado },
         },
       });
@@ -46,7 +46,7 @@ export class TransacaoService {
       await prisma.cliente.update({
         where: { id: data.clienteId },
         data: {
-          saldo: { decrement: data.valor },
+          saldoCliente: { decrement: data.valor },
         },
       });
     }

@@ -35,10 +35,36 @@ export class ClienteService {
   }
 
   async findById(id: number) {
-    return this.prisma.cliente.findUnique({
-      where: { id },
-    });
-  }
+  const cliente = await this.prisma.cliente.findUnique({
+    where: { id },
+    include: {
+      contasAnuncio: true,
+    },
+  });
+
+  if (!cliente) return null;
+
+  const saldoTotal = cliente.contasAnuncio.reduce((total, conta) => {
+    const saldo = conta.saldo?.toNumber?.() || 0;
+    return total + saldo;
+  }, 0);
+
+  const gastoTotalContas = cliente.contasAnuncio.reduce((total, conta) => {
+    const gasto = conta.gastoTotal?.toNumber?.() || 0;
+    return total + gasto;
+  }, 0);
+
+  console.log("CONTAS ASSOCIADAS:", JSON.stringify(cliente.contasAnuncio, null, 2));
+  console.log("SALDO DAS CONTAS:", saldoTotal);
+  console.log("GASTO TOTAL:", gastoTotalContas);
+
+  return {
+    ...cliente,
+    saldo: saldoTotal,
+    gastoTotal: gastoTotalContas,
+  };
+}
+
 
   async create(data: ClienteCreateInput) {
     return this.prisma.cliente.create({
@@ -46,7 +72,7 @@ export class ClienteService {
         nome: data.nome,
         email: data.email,
         fee: data.fee,
-        cnpj: data.cnpj 
+        cnpj: data.cnpj,
       },
     });
   }

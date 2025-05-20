@@ -26,6 +26,12 @@ export class Cliente {
   gastoTotal!: number;
 
   @Field()
+  alocacao!: number;
+
+  @Field()
+  saldoCliente!: number;
+
+  @Field()
   cnpj!: string;
 
   @Field()

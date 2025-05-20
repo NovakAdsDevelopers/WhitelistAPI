@@ -5,10 +5,10 @@ import { Decimal } from "@prisma/client/runtime/library";
 
 @ObjectType()
 export class ClienteContaAnuncio {
-  @Field(type => Int)
+  @Field((type) => Int)
   id!: number;
 
-  @Field(type => Int)
+  @Field((type) => Int)
   clienteId!: number;
 
   @Field()
@@ -23,16 +23,19 @@ export class ClienteContaAnuncio {
   @Field()
   ativo!: boolean;
 
-  @Field(type => Float) // Ajustado para Float
-  saldo!: number;       // Ajustado para number
+  @Field((type) => Float) // Ajustado para Float
+  saldo!: number; // Ajustado para number
 
-  @Field(type => Float) // Ajustado para Float
+  @Field((type) => Float) // Ajustado para Float
   depositoTotal!: number; // Ajustado para number
+
+  @Field((type) => Float) // Ajustado para Float
+  gastoTotal!: number;
 
   @Field()
   historico!: boolean;
 
-  @Field(type => ContasAnuncio)
+  @Field((type) => ContasAnuncio)
   contaAnuncio!: ContasAnuncio;
 }
 
@@ -44,10 +47,10 @@ export class SetClienteContaAnuncioResponse {
 
 @ObjectType()
 export class SetTransacaoClienteContaAnuncioResponse {
-  @Field(type => Int)
+  @Field((type) => Int)
   id!: number;
 
-  @Field(type => Int)
+  @Field((type) => Int)
   clienteId!: number;
 }
 
