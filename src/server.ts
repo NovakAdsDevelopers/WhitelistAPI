@@ -6,17 +6,22 @@ import { ApolloServer } from 'apollo-server-express';
 import { createSchema } from './schema';
 import { prisma } from './database';
 import cors from 'cors';
-import { metaSync } from './script'; // Importa o metaSync
+import { metaSync } from './script'; // Importa a aplicação do MetaSync
 
 const app: Application = express();
 
-app.use(cors({
-  origin: '*',
-  credentials: true
-}));
+// Configurações de CORS
+app.use(
+  cors({
+    origin: '*', // Altere isso conforme necessário em produção
+    credentials: true
+  })
+);
 
+// Função para iniciar o servidor
 const startServer = async () => {
   try {
+    // Conectar ao banco de dados
     try {
       await prisma.$connect();
       console.log('Conexão com o banco de dados estabelecida com sucesso.');
@@ -25,6 +30,7 @@ const startServer = async () => {
       process.exit(1);
     }
 
+    // Criar o esquema GraphQL
     const schema = await createSchema();
     const server = new ApolloServer({
       schema,
@@ -32,27 +38,28 @@ const startServer = async () => {
       cache: 'bounded',
     });
 
+    // Iniciar o servidor Apollo (GraphQL)
     await server.start();
+    server.applyMiddleware({ app }); // Aplica o middleware Apollo no Express
 
-    server.applyMiddleware({ app });
-
+    // Definir a porta (Render usará a variável PORT)
     const port = process.env.PORT || 4000;
 
-    // Iniciar o servidor Express principal
+    // Iniciar o servidor Express
     app.listen(port, () => {
-      console.log(`Servidor pronto em http://localhost:${port}${server.graphqlPath}`);
+      console.log(`Servidor GraphQL rodando em http://localhost:${port}${server.graphqlPath}`);
     });
 
-    // Iniciar o servidor MetaSync na mesma porta ou outra se necessário
-    const metaPort = process.env.META_SYNC_PORT || 5000;
-    metaSync.listen(metaPort, () => {
-      console.log(`MetaSync rodando na porta ${metaPort}`);
-    });
+    // Integrar o MetaSync à mesma instância do servidor Express, em uma rota própria
+    app.use('/meta', metaSync);  // Agora o MetaSync estará acessível em /meta
 
+    console.log('MetaSync rodando na rota /meta');
+    
   } catch (error) {
     console.error('Erro ao tentar iniciar o servidor:', error);
     process.exit(1);
   }
 };
 
+// Iniciar o servidor
 startServer();
