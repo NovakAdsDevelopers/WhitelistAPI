@@ -84,9 +84,17 @@ export class ClienteContaAnuncioService {
           },
         });
 
-        const gastoTotalPeriodo = totalGasto._sum.gasto ?? 0;
-        console.log(gastoTotalPeriodo);
-        // 3. Cria a associação com o gasto total
+        const gastoTotalPeriodo = totalGasto._sum.gasto ?? new Decimal(0);
+
+        const gastoTotalEmCentavos = Math.round(
+          gastoTotalPeriodo.toNumber() * 100
+        );
+
+        console.log(
+          `Gasto total no período (centavos): ${gastoTotalEmCentavos}`
+        );
+
+        // 3. Cria a associação com o gasto total em centavos
         const associacao = await this.prisma.clienteContaAnuncio.create({
           data: {
             clienteId,
@@ -94,8 +102,8 @@ export class ClienteContaAnuncioService {
             inicioAssociacao,
             fimAssociacao: fimAssociacao ?? null,
             ativo,
-            gastoTotal: gastoTotalPeriodo,
-            saldo: -gastoTotalPeriodo, // 👈 aqui está o ajuste
+            gastoTotal: gastoTotalEmCentavos,
+            saldo: -gastoTotalEmCentavos, // ✅ ajuste em centavos
           },
           select: {
             id: true,
