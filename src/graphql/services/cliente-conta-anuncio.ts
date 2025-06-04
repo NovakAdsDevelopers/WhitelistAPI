@@ -143,8 +143,8 @@ export class ClienteContaAnuncioService {
 
     const valorDecimal = new Decimal(valor);
 
-    let contaAnuncioIdOrigem; // Variável para armazenar o ID da conta de origem
-    let contaAnuncioIdDestino; // Variável para armazenar o ID da conta de destino
+    let contaAnuncioIdOrigem: string | null = null;
+    let contaAnuncioIdDestino: string | null = null;
 
     switch (tipo) {
       case "ENTRADA": {
@@ -173,48 +173,29 @@ export class ClienteContaAnuncioService {
 
         contaAnuncioIdOrigem = contaOrigem.contaAnuncioId;
 
-        // Atualiza a conta de origem
         await this.prisma.clienteContaAnuncio.update({
           where: { id: contaOrigemId },
           data: {
-            depositoTotal: {
-              increment: valorDecimal,
-            },
-            saldo: {
-              increment: valorDecimal, // Incrementa o saldo da conta de origem
-            },
-            alocacao_entrada: {
-              increment: valorDecimal,
-            },
+            depositoTotal: { increment: valorDecimal },
+            saldo: { increment: valorDecimal },
+            alocacao_entrada: { increment: valorDecimal },
           },
         });
 
-        // Atualiza a conta do anúncio
         await this.prisma.adAccount.update({
-          where: { id: contaOrigem.contaAnuncioId },
+          where: { id: contaAnuncioIdOrigem },
           data: {
-            depositoTotal: {
-              increment: valorDecimal,
-            },
-            saldo: {
-              increment: valorDecimal,
-            },
-            alocacao_entrada_total: {
-              increment: valorDecimal,
-            },
+            depositoTotal: { increment: valorDecimal },
+            saldo: { increment: valorDecimal },
+            alocacao_entrada_total: { increment: valorDecimal },
           },
         });
 
-        // Atualiza o saldo do cliente (decrementa)
         await this.prisma.cliente.update({
           where: { id: clienteId },
           data: {
-            saldoCliente: {
-              decrement: valorDecimal, // Decrementa o saldo do cliente
-            },
-            alocacao: {
-              increment: valorDecimal,
-            },
+            saldoCliente: { decrement: valorDecimal },
+            alocacao: { increment: valorDecimal },
           },
         });
 
@@ -242,65 +223,49 @@ export class ClienteContaAnuncioService {
 
         const cliente = await this.prisma.cliente.findUnique({
           where: { id: clienteId },
-          select: { saldo: true },
+          select: { saldoCliente: true },
         });
 
         if (!cliente) {
           throw new Error("Cliente não encontrado.");
         }
 
-        // Atualiza o saldo do cliente (incrementa)
         await this.prisma.cliente.update({
           where: { id: clienteId },
           data: {
-            saldoCliente: {
-              increment: valorDecimal, // Incrementa o saldo do cliente
-            },
-            alocacao: {
-              decrement: valorDecimal,
-            },
+            saldoCliente: { increment: valorDecimal },
+            alocacao: { decrement: valorDecimal },
           },
         });
 
-        // Atualiza a conta do anúncio
         await this.prisma.adAccount.update({
           where: { id: contaOrigem.contaAnuncioId },
           data: {
-            saldo: {
-              decrement: valorDecimal,
-            },
-            alocacao_saida_total: {
-              increment: valorDecimal,
-            },
+            saldo: { decrement: valorDecimal },
+            alocacao_saida_total: { increment: valorDecimal },
           },
         });
 
-        // Atualiza o saldo da conta de origem (decrementa)
         await this.prisma.clienteContaAnuncio.update({
           where: { id: contaOrigemId },
           data: {
-            saldo: {
-              decrement: valorDecimal, // Decrementa o saldo da conta de origem
-            },
-            alocacao_saida: {
-              increment: valorDecimal,
-            },
+            saldo: { decrement: valorDecimal },
+            alocacao_saida: { increment: valorDecimal },
           },
         });
 
         contaAnuncioIdOrigem = contaOrigem.contaAnuncioId;
+
         break;
       }
 
       case "REALOCACAO": {
-        // Valida se os IDs foram fornecidos
         if (!contaOrigemId || !contaDestinoId) {
           throw new Error(
             "Conta de origem e conta de destino são obrigatórias para realocação."
           );
         }
 
-        // Busca ambas as contas de forma paralela
         const [contaOrigem, contaDestino] = await Promise.all([
           this.prisma.clienteContaAnuncio.findUnique({
             where: { id: contaOrigemId },
@@ -312,17 +277,14 @@ export class ClienteContaAnuncioService {
           }),
         ]);
 
-        // Valida se a conta de origem existe
         if (!contaOrigem) {
           throw new Error("Conta de origem não encontrada.");
         }
 
-        // Valida se a conta de destino existe
         if (!contaDestino) {
           throw new Error("Conta de destino não encontrada.");
         }
 
-        // Verifica saldo suficiente na origem
         const saldoOrigem = new Decimal(contaOrigem.saldo ?? 0);
         if (valorDecimal.gt(saldoOrigem)) {
           throw new Error(
@@ -330,13 +292,10 @@ export class ClienteContaAnuncioService {
           );
         }
 
-        // Define os IDs de contas de anúncio
         contaAnuncioIdOrigem = contaOrigem.contaAnuncioId;
         contaAnuncioIdDestino = contaDestino.contaAnuncioId;
 
-        // Atualiza saldos e totais (em ordem correta)
         await Promise.all([
-          // Atualiza clienteContaAnuncio da origem
           this.prisma.clienteContaAnuncio.update({
             where: { id: contaOrigemId },
             data: {
@@ -344,8 +303,6 @@ export class ClienteContaAnuncioService {
               realocacao_saida: { increment: valorDecimal },
             },
           }),
-
-          // Atualiza clienteContaAnuncio da destino
           this.prisma.clienteContaAnuncio.update({
             where: { id: contaDestinoId },
             data: {
@@ -353,8 +310,6 @@ export class ClienteContaAnuncioService {
               realocacao_entrada: { increment: valorDecimal },
             },
           }),
-
-          // Atualiza adAccount da origem
           this.prisma.adAccount.update({
             where: { id: contaAnuncioIdOrigem },
             data: {
@@ -362,12 +317,10 @@ export class ClienteContaAnuncioService {
               realocacao_saida_total: { increment: valorDecimal },
             },
           }),
-
-          // Atualiza adAccount da destino
           this.prisma.adAccount.update({
             where: { id: contaAnuncioIdDestino },
             data: {
-              saldo: { decrement: valorDecimal }, // Se quiser somar aqui, talvez deveria ser increment?
+              saldo: { increment: valorDecimal },
               realocacao_entrada_total: { increment: valorDecimal },
             },
           }),
@@ -380,17 +333,21 @@ export class ClienteContaAnuncioService {
         throw new Error(`Tipo de transação não suportado: ${tipo}`);
     }
 
+    // ✅ Inserção garantida na tabela TransacaoConta
     const transacao = await this.prisma.transacaoConta.create({
       data: {
-        tipo,
+        tipo: tipo as any, // ou ajuste para enum se necessário
         valor: valorDecimal,
-        contaOrigemId: contaAnuncioIdOrigem,
-        contaDestinoId: contaAnuncioIdDestino,
+        contaOrigemId: contaAnuncioIdOrigem ?? null,
+        contaDestinoId: contaAnuncioIdDestino ?? null,
         usuarioId,
       },
       select: {
         id: true,
         usuarioId: true,
+        dataTransacao: true,
+        tipo: true,
+        valor: true,
       },
     });
 
