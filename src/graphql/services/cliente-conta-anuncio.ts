@@ -6,6 +6,7 @@ import {
   TransacaoClienteContaAnuncioInput,
 } from "../inputs/cliente-conta-anuncio";
 import { Decimal } from "@prisma/client/runtime/library";
+import { ApolloError } from "apollo-server-core";
 
 export class ClienteContaAnuncioService {
   private prisma = new PrismaClient();
@@ -158,8 +159,14 @@ export class ClienteContaAnuncioService {
         }
 
         const saldoCliente = new Decimal(cliente.saldoCliente ?? 0);
-        if (saldoCliente.lt(valorDecimal)) {
-          throw new Error("Saldo do cliente insuficiente para a entrada.");
+        if (valorDecimal.gt(saldoCliente)) {
+          throw new ApolloError(
+            "Saldo do cliente insuficiente para a entrada.",
+            "SALDO_INSUFICIENTE",
+            {
+              statusCode: 400,
+            }
+          );
         }
 
         const contaOrigem = await this.prisma.clienteContaAnuncio.findFirst({
@@ -218,7 +225,13 @@ export class ClienteContaAnuncioService {
 
         const saldoOrigem = new Decimal(contaOrigem.saldo ?? 0);
         if (valorDecimal.gt(saldoOrigem)) {
-          throw new Error("Saldo insuficiente na conta de origem para saída.");
+          throw new ApolloError(
+            "Saldo insuficiente na conta de origem para saída.",
+            "SALDO_INSUFICIENTE",
+            {
+              statusCode: 400,
+            }
+          );
         }
 
         const cliente = await this.prisma.cliente.findUnique({
