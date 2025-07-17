@@ -10,6 +10,10 @@ import { metaSync } from './script'; // Importa a aplicação do MetaSync
 
 const app: Application = express();
 
+let syncRunning = false;
+export const setSyncRunning = (state: boolean) => { syncRunning = state; };
+
+
 // Configurações de CORS
 app.use(
   cors({

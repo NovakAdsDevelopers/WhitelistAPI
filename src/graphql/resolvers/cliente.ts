@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Arg } from "type-graphql";
+import { Resolver, Query, Mutation, Arg, ID, Int } from "type-graphql";
 import { ClienteService } from "../services/cliente";
 import { ClienteCreateInput, ClienteUpdateInput } from "../inputs/cliente";
 import { Cliente, ClienteResult } from "../models/cliente";
@@ -10,9 +10,9 @@ export class ClienteResolver {
 
   @Query(() => ClienteResult)
   async GetClientes(
-      @Arg("pagination", () => Pagination, { nullable: true })
-      pagination?: Pagination
-    )  {
+    @Arg("pagination", () => Pagination, { nullable: true })
+    pagination?: Pagination
+  ) {
     return this.clienteService.findAll(pagination);
   }
 
@@ -34,8 +34,11 @@ export class ClienteResolver {
     return this.clienteService.update(id, data);
   }
 
-  @Mutation(() => Boolean)
-  async DeleteCliente(@Arg("id") id: number) {
-    return this.clienteService.delete(id);
+  @Mutation(() => Cliente)
+  async DeleteCliente(@Arg("id", () => Int) id: number) {
+    // Se a exclusão ocorrer, retorna o id; caso contrário, null.
+    const deletedId = await this.clienteService.delete(id);
+
+    return { id: deletedId };
   }
 }

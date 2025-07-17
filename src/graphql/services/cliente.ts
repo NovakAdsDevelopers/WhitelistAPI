@@ -35,36 +35,38 @@ export class ClienteService {
   }
 
   async findById(id: number) {
-  const cliente = await this.prisma.cliente.findUnique({
-    where: { id },
-    include: {
-      contasAnuncio: true,
-    },
-  });
+    const cliente = await this.prisma.cliente.findUnique({
+      where: { id },
+      include: {
+        contasAnuncio: true,
+      },
+    });
 
-  if (!cliente) return null;
+    if (!cliente) return null;
 
-  const saldoTotal = cliente.contasAnuncio.reduce((total, conta) => {
-    const saldo = conta.saldo?.toNumber?.() || 0;
-    return total + saldo;
-  }, 0);
+    const saldoTotal = cliente.contasAnuncio.reduce((total, conta) => {
+      const saldo = conta.saldo?.toNumber?.() || 0;
+      return total + saldo;
+    }, 0);
 
-  const gastoTotalContas = cliente.contasAnuncio.reduce((total, conta) => {
-    const gasto = conta.gastoTotal?.toNumber?.() || 0;
-    return total + gasto;
-  }, 0);
+    const gastoTotalContas = cliente.contasAnuncio.reduce((total, conta) => {
+      const gasto = conta.gastoTotal?.toNumber?.() || 0;
+      return total + gasto;
+    }, 0);
 
-  console.log("CONTAS ASSOCIADAS:", JSON.stringify(cliente.contasAnuncio, null, 2));
-  console.log("SALDO DAS CONTAS:", saldoTotal);
-  console.log("GASTO TOTAL:", gastoTotalContas);
+    console.log(
+      "CONTAS ASSOCIADAS:",
+      JSON.stringify(cliente.contasAnuncio, null, 2)
+    );
+    console.log("SALDO DAS CONTAS:", saldoTotal);
+    console.log("GASTO TOTAL:", gastoTotalContas);
 
-  return {
-    ...cliente,
-    saldo: saldoTotal,
-    gastoTotal: gastoTotalContas,
-  };
-}
-
+    return {
+      ...cliente,
+      saldo: saldoTotal,
+      gastoTotal: gastoTotalContas,
+    };
+  }
 
   async create(data: ClienteCreateInput) {
     return this.prisma.cliente.create({
@@ -89,12 +91,13 @@ export class ClienteService {
 
   async delete(id: number) {
     try {
-      await this.prisma.cliente.delete({
+      const deleted = await this.prisma.cliente.delete({
         where: { id },
+        select: { id: true },
       });
-      return true;
+      return deleted.id;
     } catch (error) {
-      return false;
+      return null; // ou lançar um erro, dependendo da sua lógica
     }
   }
 }

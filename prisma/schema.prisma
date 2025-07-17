@@ -8,15 +8,16 @@ datasource db {
 }
 
 model Usuario {
-  id                Int                @id @default(autoincrement())
-  nome              String
-  email             String             @unique
-  senha             String
-  tipo              TipoUsuario        @default(USUARIO)
-  criadoEm          DateTime           @default(now())
-  atualizadoEm      DateTime           @updatedAt
-  transacoesCliente TransacaoCliente[]
-  transacoesConta   TransacaoConta[]
+  id                  Int                @id @default(autoincrement())
+  nome                String
+  email               String             @unique
+  senha               String
+  tipo                TipoUsuario        @default(USUARIO)
+  criadoEm            DateTime           @default(now())
+  atualizadoEm        DateTime           @updatedAt
+  transacoesCliente   TransacaoCliente[]
+  transacoesConta     TransacaoConta[]
+  ultimaSincronizacao String?
 }
 
 model Cliente {
@@ -28,8 +29,8 @@ model Cliente {
   depositoTotal Decimal @default(0) @db.Decimal(18, 2)
   gastoTotal    Decimal @default(0) @db.Decimal(18, 2)
 
-  saldoCliente  Decimal         @default(0) @db.Decimal(18, 2)
-  alocacao Decimal @default(0) @db.Decimal(18, 2)
+  saldoCliente Decimal @default(0) @db.Decimal(18, 2)
+  alocacao     Decimal @default(0) @db.Decimal(18, 2)
 
   cnpj              String
   fee               String
@@ -55,9 +56,16 @@ model AdAccount {
   alocacao_entrada_total   Decimal @default(0) @db.Decimal(16, 2)
   alocacao_saida_total     Decimal @default(0) @db.Decimal(16, 2)
 
-  limiteGasto         String @default("0")
-  saldoMeta           String @default("0")
-  ultimaSincronizacao String
+  // Substitui o campo Json
+  limiteCritico String @default("0")
+  limiteMedio   String @default("0")
+  limiteInicial String @default("0")
+
+  limiteGasto         String    @default("0")
+  saldoMeta           String    @default("0")
+  ultimaSincronizacao String    @default("0")
+  ultimoAlertaEnviado DateTime?
+  alertaAtivo         Boolean   @default(true)
 
   clientesHistorico ClienteContaAnuncio[] @relation("HistoricoClienteContaAnuncio")
   GastoDiario       GastoDiario[]

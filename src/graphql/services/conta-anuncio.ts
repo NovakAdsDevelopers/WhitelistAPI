@@ -7,30 +7,51 @@ import getPageInfo from "../../helpers/getPageInfo";
 
 export class ContasAnuncioService {
   async getAll(pagination?: Pagination) {
-    let pagina: number = 0;
-    let quantidade: number = 10;
+    const pagina = pagination?.pagina ?? 0;
+    const quantidade = pagination?.quantidade ?? 10;
 
-    if (pagination) {
-      pagina = pagination.pagina ?? 0;
-      quantidade = pagination.quantidade ?? 10;
+    // Data de 30 dias atrás
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = new Date(Date.now() - THIRTY_DAYS_MS);
+
+    // 1. Buscar os IDs das contas com gastos nos últimos 30 dias
+    const activeAdAccountIdsResult = await prisma.gastoDiario.findMany({
+      where: {
+        data: { gte: thirtyDaysAgo },
+        gasto: { gt: 0 },
+      },
+      select: { contaAnuncioId: true },
+      distinct: ["contaAnuncioId"],
+    });
+
+    const activeAdAccountIds = activeAdAccountIdsResult.map(
+      (item) => item.contaAnuncioId
+    );
+
+    if (activeAdAccountIds.length === 0) {
+      throw new Error(
+        "Nenhuma conta encontrada com gastos nos últimos 30 dias."
+      );
     }
 
+    // 2. Buscar as contas ativas com paginação
     const adAccounts = await prisma.adAccount.findMany({
+      where: {
+        id: { in: activeAdAccountIds },
+      },
       skip: pagina * quantidade,
       take: quantidade,
     });
 
     if (adAccounts.length === 0) {
-      throw new Error(`Nenhuma conta encontrada para os filtros aplicados.`);
+      throw new Error("Nenhuma conta encontrada para os filtros aplicados.");
     }
 
-    // Conta total de registros
-    const dataTotal = await prisma.adAccount.count();
+    // 3. Informações de paginação
+    const dataTotal = activeAdAccountIds.length;
+    const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
 
-    // Prepara o PaginationInfo
-    const DataPageInfo = getPageInfo(dataTotal, pagina, quantidade);
-
-    return { result: adAccounts, pageInfo: DataPageInfo };
+    return { result: adAccounts, pageInfo };
   }
 
   async getById(id: string) {
@@ -65,5 +86,16 @@ export class ContasAnuncioService {
 
   async delete(id: string) {
     return await prisma.adAccount.delete({ where: { id } });
+  }
+
+  async switchAlerta(id: string, alertaAtivo: boolean): Promise<void> {
+    try {
+      await prisma.adAccount.update({
+        where: { id },
+        data: { alertaAtivo },
+      });
+    } catch (err) {
+      throw new Error(`Conta de anúncio ${id} não encontrada`);
+    }
   }
 }
