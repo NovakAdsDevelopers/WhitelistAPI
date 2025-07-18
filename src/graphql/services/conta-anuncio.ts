@@ -54,6 +54,56 @@ export class ContasAnuncioService {
     return { result: adAccounts, pageInfo };
   }
 
+  async getAllAccounts(pagination?: Pagination) {
+  const pagina = pagination?.pagina ?? 0;
+  const quantidade = pagination?.quantidade ?? 10;
+
+  // // 🔍 Data de 30 dias atrás
+  // const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+  // const thirtyDaysAgo = new Date(Date.now() - THIRTY_DAYS_MS);
+
+  // // 🔍 1. Buscar os IDs das contas com gastos nos últimos 30 dias
+  // const activeAdAccountIdsResult = await prisma.gastoDiario.findMany({
+  //   where: {
+  //     data: { gte: thirtyDaysAgo }, // data >= 30 dias atrás
+  //     gasto: { gt: 0 },             // gasto > 0
+  //   },
+  //   select: { contaAnuncioId: true },
+  //   distinct: ["contaAnuncioId"],
+  // });
+
+  // const activeAdAccountIds = activeAdAccountIdsResult.map(
+  //   (item) => item.contaAnuncioId
+  // );
+
+  // if (activeAdAccountIds.length === 0) {
+  //   throw new Error(
+  //     "Nenhuma conta encontrada com gastos nos últimos 30 dias."
+  //   );
+  // }
+
+  // 🔍 2. Buscar todas as contas de anúncio com paginação (sem filtro)
+  const adAccounts = await prisma.adAccount.findMany({
+    // where: {
+    //   id: { in: activeAdAccountIds }, // 🔒 filtro desativado
+    // },
+    skip: pagina * quantidade,
+    take: quantidade,
+  });
+
+  if (adAccounts.length === 0) {
+    throw new Error("Nenhuma conta encontrada.");
+  }
+
+  // 🔢 Total de contas para a paginação
+  // const dataTotal = activeAdAccountIds.length; // ❌ antigo
+  const dataTotal = await prisma.adAccount.count(); // ✅ novo
+  const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
+
+  return { result: adAccounts, pageInfo };
+}
+
+
   async getById(id: string) {
     return await prisma.adAccount.findUnique({ where: { id } });
   }

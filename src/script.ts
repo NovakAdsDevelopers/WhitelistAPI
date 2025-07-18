@@ -137,18 +137,21 @@ app.post("/sync-ads-by-ids", async (req, res) => {
 //   }
 // });
 
-// Tarefa diária às 9h
-// cron.schedule("0 9 * * *", async () => {
-//   console.log("☀️ Executando tarefa diária às 9h...");
+cron.schedule("0 9 * * *", async () => {
+  console.log("☀️ Executando tarefa diária às 9h...");
 
-//   await Promise.all([
-//     ajusteDiarioLimitesAlerta(TOKEN1!),
-//     ajusteDiarioLimitesAlerta(TOKEN2!),
-//   ]);
-// });
+  // await Promise.all([
+  //   ajusteDiarioLimitesAlerta(TOKEN1!),
+  //   ajusteDiarioLimitesAlerta(TOKEN2!),
+  // ]);
+});
 
 // Execução ao iniciar o app
 (async () => {
+  //     await Promise.all([
+  //   ajusteDiarioLimitesAlerta(TOKEN1!),
+  //   ajusteDiarioLimitesAlerta(TOKEN2!),
+  // ]);
   console.log("🚀 API Scripts Meta iniciada");
   registrarExecucao(); // Inicializa com hora atual ao subir o servidor
 })();

@@ -17,6 +17,15 @@ export class ContasAnuncioResolver {
     return this.contasAnuncioService.getAll(pagination);
   }
 
+  // Query com paginação
+  @Query(() => ContasAnuncioResult)
+  async GetAllContasAnuncio(
+    @Arg("pagination", () => Pagination, { nullable: true })
+    pagination?: Pagination
+  ) {
+    return this.contasAnuncioService.getAllAccounts(pagination);
+  }
+
   @Query(() => ContasAnuncio, { nullable: true })
   async GetContaAnuncioByID(
     @Arg("account_id", () => String) account_id: string

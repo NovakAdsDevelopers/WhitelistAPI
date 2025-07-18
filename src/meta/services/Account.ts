@@ -31,6 +31,7 @@ async function atualizarContaExistente(
       saldoMeta: account.balance,
       ultimaSincronizacao: agora,
       alertaAtivo: true,
+      BM: type
     },
   });
 
@@ -64,6 +65,7 @@ async function criarContaNova(
       saldoMeta: account.balance,
       ultimaSincronizacao: agora,
       alertaAtivo: true,
+      BM: type,
       ...limites,
     },
   });

@@ -178,9 +178,13 @@ export async function obterLimitesDinamicos(
   };
 }
 
-export async function ajusteDiarioLimitesAlerta(token: string) {
+export async function ajusteDiarioLimitesAlerta(token: string, type: "BM1" | "BM2") {
   const agora = new Date();
-  const accounts = await prisma.adAccount.findMany();
+  const accounts = await prisma.adAccount.findMany( {
+    where: {
+      BM: type
+    }
+  });
 
   console.log(`🔄 Iniciando ajuste diário de ${accounts.length} contas...`);
 

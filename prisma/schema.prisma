@@ -71,6 +71,8 @@ model AdAccount {
   GastoDiario       GastoDiario[]
   transacoesDestino TransacaoConta[]      @relation("ContaDestino")
   transacoesOrigem  TransacaoConta[]      @relation("ContaOrigem")
+
+  BM String?
 }
 
 model ClienteContaAnuncio {
