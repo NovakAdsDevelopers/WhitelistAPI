@@ -11,6 +11,7 @@ import {
   autoDisparoAlertas,
 } from "./meta/services/limite";
 import { registrarExecucao, tempoRestanteMs } from "./lib/cronTimer";
+import { recalcularGastosDiarios } from "./meta/services/gastoDiario";
 
 dotenv.config();
 
@@ -146,14 +147,25 @@ cron.schedule("0 9 * * *", async () => {
   // ]);
 });
 
+cron.schedule('0 0 * * *', async () => {
+  try {
+    if (TOKEN1 && TOKEN2) {
+      await recalcularGastosDiarios(TOKEN1, TOKEN2);
+      console.log("🔁 Recalculo de gastos diário executado com sucesso.");
+    } else {
+      console.warn("⚠️ Tokens de acesso não encontrados no .env.");
+    }
+  } catch (error) {
+    console.error("❌ Erro ao recalcular gastos no cron:", error);
+  }
+});
+
 // Execução ao iniciar o app
 (async () => {
-  //     await Promise.all([
-  //   ajusteDiarioLimitesAlerta(TOKEN1!),
-  //   ajusteDiarioLimitesAlerta(TOKEN2!),
-  // ]);
   console.log("🚀 API Scripts Meta iniciada");
-  registrarExecucao(); // Inicializa com hora atual ao subir o servidor
+
+  registrarExecucao();
+
 })();
 
 export { app as metaSync };

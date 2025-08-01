@@ -13,6 +13,21 @@ export class ClienteContaAnuncioCreateInput {
   fimAssociacao?: Date;
 }
 
+
+@InputType()
+export class ClienteContaAnuncioUpdateInput {
+  @Field()
+  id!: string;
+
+  @Field()
+  inicioAssociacao!: Date;
+
+  @Field({ nullable: true })
+  fimAssociacao?: Date;
+}
+
+
+
 @InputType()
 export class ClienteContaAnuncioCreateManyInput {
   @Field()

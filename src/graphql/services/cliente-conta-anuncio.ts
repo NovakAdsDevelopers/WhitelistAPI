@@ -3,10 +3,12 @@ import { Pagination } from "../inputs/Utils";
 import getPageInfo from "../../helpers/getPageInfo";
 import {
   ClienteContaAnuncioCreateManyInput,
+  ClienteContaAnuncioUpdateInput,
   TransacaoClienteContaAnuncioInput,
 } from "../inputs/cliente-conta-anuncio";
 import { Decimal } from "@prisma/client/runtime/library";
 import { ApolloError } from "apollo-server-core";
+import { prisma } from "../../database";
 
 export class ClienteContaAnuncioService {
   private prisma = new PrismaClient();
@@ -30,11 +32,58 @@ export class ClienteContaAnuncioService {
           inicioAssociacao: true,
           fimAssociacao: true,
           depositoTotal: true,
-          gastoTotal: true,
           ativo: true,
-          contaAnuncio: true,
+          historico: true,
           saldo: true,
+          contaAnuncio: true,
         },
+      });
+
+      const gastos = await this.prisma.gastoDiario.findMany({
+        where: {
+          OR: associacoes.map((a) => ({
+            contaAnuncioId: a.contaAnuncioId,
+            data: {
+              gte: a.inicioAssociacao,
+              lte: a.fimAssociacao ?? new Date(),
+            },
+          })),
+        },
+      });
+
+      // Agrupar gastos por contaAnuncioId
+      const gastosPorConta: Record<string, number> = {};
+
+      for (const gasto of gastos) {
+        const contaId = gasto.contaAnuncioId;
+
+        if (!gastosPorConta[contaId]) {
+          gastosPorConta[contaId] = 0;
+        }
+
+        gastosPorConta[contaId] += gasto.gasto.toNumber();
+      }
+
+      // Mapear associações e calcular gastoTotal e saldo dinamicamente
+      const associacoesComGastoCalculado = associacoes.map((a) => {
+        const gastoTotal = gastos
+          .filter(
+            (g) =>
+              g.contaAnuncioId === a.contaAnuncioId &&
+              g.data >= a.inicioAssociacao &&
+              g.data <= (a.fimAssociacao ?? new Date())
+          )
+          .reduce((total, g) => total + g.gasto.toNumber(), 0);
+
+        const deposito = a.depositoTotal?.toNumber?.() ?? 0;
+        const saldo = deposito / 100 - gastoTotal;
+
+        return {
+          ...a,
+          depositoTotal: deposito / 100, // Convertendo para reais
+          gastoTotal,
+          saldo,
+        };
       });
 
       const total = await this.prisma.clienteContaAnuncio.count({
@@ -44,7 +93,7 @@ export class ClienteContaAnuncioService {
       const pageInfo = getPageInfo(total, pagina, quantidade);
 
       return {
-        result: associacoes,
+        result: associacoesComGastoCalculado,
         pageInfo,
       };
     } catch (error: any) {
@@ -52,6 +101,53 @@ export class ClienteContaAnuncioService {
         `Erro ao buscar associações do cliente ${clienteId}: ${
           error.message ?? error
         }`
+      );
+    }
+  }
+  async findByAssociacaoId(associacaoId: number) {
+    try {
+      const associacao = await this.prisma.clienteContaAnuncio.findUnique({
+        where: { id: associacaoId },
+        select: {
+          id: true,
+          clienteId: true,
+          contaAnuncioId: true,
+          inicioAssociacao: true,
+          fimAssociacao: true,
+          depositoTotal: true,
+          ativo: true,
+          historico: true,
+          saldo: true,
+          contaAnuncio: true,
+        },
+      });
+
+      if (!associacao) {
+        throw new Error(`Associação ${associacaoId} não encontrada.`);
+      }
+
+      const gastos = await this.prisma.gastoDiario.findMany({
+        where: {
+          contaAnuncioId: associacao.contaAnuncioId,
+          data: {
+            gte: associacao.inicioAssociacao,
+            lte: associacao.fimAssociacao ?? new Date(),
+          },
+        },
+      });
+
+      const gastoTotal = gastos.reduce(
+        (total, g) => total + g.gasto.toNumber(),
+        0
+      );
+  
+      return {
+        ...associacao,
+        gastoTotal
+      };
+    } catch (error: any) {
+      throw new Error(
+        `Erro ao buscar associação ${associacaoId}: ${error.message ?? error}`
       );
     }
   }
@@ -127,6 +223,33 @@ export class ClienteContaAnuncioService {
     }
   }
 
+  async update(data: ClienteContaAnuncioUpdateInput) {
+    const { id, inicioAssociacao, fimAssociacao } = data;
+
+    try {
+      const associacao = await this.prisma.clienteContaAnuncio.update({
+        where: { id: Number(id) },
+        data: {
+          inicioAssociacao,
+          fimAssociacao: fimAssociacao ?? null,
+        },
+        select: {
+          id: true,
+          clienteId: true,
+          contaAnuncioId: true,
+          inicioAssociacao: true,
+          fimAssociacao: true,
+          ativo: true,
+          saldo: true,
+        },
+      });
+
+      return associacao;
+    } catch (error) {
+      throw new Error(`Erro ao atualizar associação: ${error}`);
+    }
+  }
+
   async push(data: TransacaoClienteContaAnuncioInput) {
     const { contaOrigemId, contaDestinoId, tipo, valor, usuarioId, clienteId } =
       data;
@@ -143,7 +266,6 @@ export class ClienteContaAnuncioService {
     }
 
     const valorDecimal = new Decimal(valor);
-
     let contaAnuncioIdOrigem: string | null = null;
     let contaAnuncioIdDestino: string | null = null;
 
@@ -153,19 +275,14 @@ export class ClienteContaAnuncioService {
           where: { id: clienteId },
           select: { saldoCliente: true },
         });
-
-        if (!cliente) {
-          throw new Error("Cliente não encontrado.");
-        }
+        if (!cliente) throw new Error("Cliente não encontrado.");
 
         const saldoCliente = new Decimal(cliente.saldoCliente ?? 0);
         if (valorDecimal.gt(saldoCliente)) {
           throw new ApolloError(
             "Saldo do cliente insuficiente para a entrada.",
             "SALDO_INSUFICIENTE",
-            {
-              statusCode: 400,
-            }
+            { statusCode: 400 }
           );
         }
 
@@ -173,64 +290,54 @@ export class ClienteContaAnuncioService {
           where: { id: contaOrigemId },
           select: { contaAnuncioId: true },
         });
-
-        if (!contaOrigem) {
-          throw new Error("Conta de origem não encontrada.");
-        }
+        if (!contaOrigem) throw new Error("Conta de origem não encontrada.");
 
         contaAnuncioIdOrigem = contaOrigem.contaAnuncioId;
 
-        await this.prisma.clienteContaAnuncio.update({
-          where: { id: contaOrigemId },
-          data: {
-            depositoTotal: { increment: valorDecimal },
-            saldo: { increment: valorDecimal },
-            alocacao_entrada: { increment: valorDecimal },
-          },
-        });
-
-        await this.prisma.adAccount.update({
-          where: { id: contaAnuncioIdOrigem },
-          data: {
-            depositoTotal: { increment: valorDecimal },
-            saldo: { increment: valorDecimal },
-            alocacao_entrada_total: { increment: valorDecimal },
-          },
-        });
-
-        await this.prisma.cliente.update({
-          where: { id: clienteId },
-          data: {
-            saldoCliente: { decrement: valorDecimal },
-            alocacao: { increment: valorDecimal },
-          },
-        });
-
+        await this.prisma.$transaction([
+          this.prisma.clienteContaAnuncio.update({
+            where: { id: contaOrigemId },
+            data: {
+              depositoTotal: { increment: valorDecimal },
+              saldo: { increment: valorDecimal },
+              alocacao_entrada: { increment: valorDecimal },
+            },
+          }),
+          this.prisma.adAccount.update({
+            where: { id: contaAnuncioIdOrigem },
+            data: {
+              depositoTotal: { increment: valorDecimal },
+              saldo: { increment: valorDecimal },
+              alocacao_entrada_total: { increment: valorDecimal },
+            },
+          }),
+          this.prisma.cliente.update({
+            where: { id: clienteId },
+            data: {
+              saldoCliente: { decrement: valorDecimal },
+              alocacao: { increment: valorDecimal },
+            },
+          }),
+        ]);
         break;
       }
 
       case "SAIDA": {
-        if (!contaOrigemId) {
+        if (!contaOrigemId)
           throw new Error("Conta origem é obrigatória para saída.");
-        }
 
         const contaOrigem = await this.prisma.clienteContaAnuncio.findUnique({
           where: { id: contaOrigemId },
           select: { saldo: true, contaAnuncioId: true },
         });
-
-        if (!contaOrigem) {
-          throw new Error("Conta de origem não encontrada.");
-        }
+        if (!contaOrigem) throw new Error("Conta de origem não encontrada.");
 
         const saldoOrigem = new Decimal(contaOrigem.saldo ?? 0);
         if (valorDecimal.gt(saldoOrigem)) {
           throw new ApolloError(
             "Saldo insuficiente na conta de origem para saída.",
             "SALDO_INSUFICIENTE",
-            {
-              statusCode: 400,
-            }
+            { statusCode: 400 }
           );
         }
 
@@ -238,37 +345,33 @@ export class ClienteContaAnuncioService {
           where: { id: clienteId },
           select: { saldoCliente: true },
         });
-
-        if (!cliente) {
-          throw new Error("Cliente não encontrado.");
-        }
-
-        await this.prisma.cliente.update({
-          where: { id: clienteId },
-          data: {
-            saldoCliente: { increment: valorDecimal },
-            alocacao: { decrement: valorDecimal },
-          },
-        });
-
-        await this.prisma.adAccount.update({
-          where: { id: contaOrigem.contaAnuncioId },
-          data: {
-            saldo: { decrement: valorDecimal },
-            alocacao_saida_total: { increment: valorDecimal },
-          },
-        });
-
-        await this.prisma.clienteContaAnuncio.update({
-          where: { id: contaOrigemId },
-          data: {
-            saldo: { decrement: valorDecimal },
-            alocacao_saida: { increment: valorDecimal },
-          },
-        });
+        if (!cliente) throw new Error("Cliente não encontrado.");
 
         contaAnuncioIdOrigem = contaOrigem.contaAnuncioId;
 
+        await this.prisma.$transaction([
+          this.prisma.clienteContaAnuncio.update({
+            where: { id: contaOrigemId },
+            data: {
+              saldo: { decrement: valorDecimal },
+              alocacao_saida: { increment: valorDecimal },
+            },
+          }),
+          this.prisma.adAccount.update({
+            where: { id: contaAnuncioIdOrigem },
+            data: {
+              saldo: { decrement: valorDecimal },
+              alocacao_saida_total: { increment: valorDecimal },
+            },
+          }),
+          this.prisma.cliente.update({
+            where: { id: clienteId },
+            data: {
+              saldoCliente: { increment: valorDecimal },
+              alocacao: { decrement: valorDecimal },
+            },
+          }),
+        ]);
         break;
       }
 
@@ -290,25 +393,22 @@ export class ClienteContaAnuncioService {
           }),
         ]);
 
-        if (!contaOrigem) {
-          throw new Error("Conta de origem não encontrada.");
-        }
-
-        if (!contaDestino) {
-          throw new Error("Conta de destino não encontrada.");
-        }
+        if (!contaOrigem) throw new Error("Conta de origem não encontrada.");
+        if (!contaDestino) throw new Error("Conta de destino não encontrada.");
 
         const saldoOrigem = new Decimal(contaOrigem.saldo ?? 0);
         if (valorDecimal.gt(saldoOrigem)) {
-          throw new Error(
-            "Saldo insuficiente na conta de origem para realocação."
+          throw new ApolloError(
+            "Saldo insuficiente na conta de origem para realocação.",
+            "SALDO_INSUFICIENTE",
+            { statusCode: 400 }
           );
         }
 
         contaAnuncioIdOrigem = contaOrigem.contaAnuncioId;
         contaAnuncioIdDestino = contaDestino.contaAnuncioId;
 
-        await Promise.all([
+        await this.prisma.$transaction([
           this.prisma.clienteContaAnuncio.update({
             where: { id: contaOrigemId },
             data: {
@@ -321,6 +421,7 @@ export class ClienteContaAnuncioService {
             data: {
               saldo: { increment: valorDecimal },
               realocacao_entrada: { increment: valorDecimal },
+              depositoTotal: { increment: valorDecimal }, // <- opcional se considerar realocação como novo "depósito"
             },
           }),
           this.prisma.adAccount.update({
@@ -338,21 +439,17 @@ export class ClienteContaAnuncioService {
             },
           }),
         ]);
-
         break;
       }
-
-      default:
-        throw new Error(`Tipo de transação não suportado: ${tipo}`);
     }
 
-    // ✅ Inserção garantida na tabela TransacaoConta
+    // Criar transação
     const transacao = await this.prisma.transacaoConta.create({
       data: {
-        tipo: tipo as any, // ou ajuste para enum se necessário
+        tipo: tipo as any,
         valor: valorDecimal,
-        contaOrigemId: contaAnuncioIdOrigem ?? null,
-        contaDestinoId: contaAnuncioIdDestino ?? null,
+        contaOrigemId: contaAnuncioIdOrigem,
+        contaDestinoId: contaAnuncioIdDestino,
         usuarioId,
       },
       select: {

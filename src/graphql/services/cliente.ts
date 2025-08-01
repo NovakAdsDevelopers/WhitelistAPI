@@ -44,22 +44,40 @@ export class ClienteService {
 
     if (!cliente) return null;
 
-    const saldoTotal = cliente.contasAnuncio.reduce((total, conta) => {
-      const saldo = conta.saldo?.toNumber?.() || 0;
-      return total + saldo;
+    const contaIds = cliente.contasAnuncio.map((c) => c.id.toString());
+
+    // Soma dos depósitos totais
+    const depositoTotalContas = cliente.contasAnuncio.reduce((total, conta) => {
+      const deposito = conta.depositoTotal?.toNumber?.() ?? 0;
+      return total + deposito;
     }, 0);
 
-    const gastoTotalContas = cliente.contasAnuncio.reduce((total, conta) => {
-      const gasto = conta.gastoTotal?.toNumber?.() || 0;
-      return total + gasto;
+    const gastosPorConta = await this.prisma.gastoDiario.groupBy({
+      by: ["contaAnuncioId"],
+      where: {
+        contaAnuncioId: {
+          in: contaIds, // agora é string[]
+        },
+      },
+      _sum: {
+        gasto: true,
+      },
+    });
+
+    const gastoTotalContas = gastosPorConta.reduce((total, g) => {
+      const valor = g._sum?.gasto?.toNumber?.() ?? 0;
+      return total + valor;
     }, 0);
 
+    // Cálculo do saldo total (depósitos - gastos)
+    const saldoTotal = depositoTotalContas - gastoTotalContas;
     console.log(
       "CONTAS ASSOCIADAS:",
       JSON.stringify(cliente.contasAnuncio, null, 2)
     );
-    console.log("SALDO DAS CONTAS:", saldoTotal);
+    console.log("DEPÓSITO TOTAL:", depositoTotalContas);
     console.log("GASTO TOTAL:", gastoTotalContas);
+    console.log("SALDO CALCULADO:", saldoTotal);
 
     return {
       ...cliente,

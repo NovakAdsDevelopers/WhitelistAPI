@@ -10,24 +10,42 @@ export async function fetchAllAdAccounts(
   type: "BM1" | "BM2"
 ) {
   console.log("🔄 Iniciando busca de contas de anúncio no Meta API...");
-  console.log("Buscando constas da BM:" + type);
+  console.log("Buscando contas da BM: " + type);
   try {
     let nextUrl: string | null = url;
     let totalAccounts = 0;
+    let isFirstPage = true;
 
     while (nextUrl) {
       console.log(`📡 Fazendo requisição para: ${nextUrl}`);
-      const response: any = await axios.get(nextUrl, {
-        params: {
-          access_token: token,
-          fields:
-            "name,account_id,account_status,currency,timezone_name,amount_spent,spend_cap,balance",
-          limit: 25,
-        },
-      });
 
-      const data = response.data;
-      if (data.data && data.data.length > 0) {
+      let response;
+
+      if (isFirstPage) {
+        // Primeira requisição: monta a URL com os parâmetros
+        response = await axios.get(nextUrl, {
+          params: {
+            access_token: token,
+            fields:
+              "name,account_id,account_status,currency,timezone_name,amount_spent,spend_cap,balance",
+            limit: 25,
+          },
+        });
+        isFirstPage = false;
+      } else {
+        // Nas próximas páginas: usar paging.next como está
+        response = await axios.get(nextUrl);
+      }
+
+      const data: any = response.data;
+
+      if (data.error) {
+        throw new Error(
+          `Erro da API do Facebook: ${data.error.message} (code ${data.error.code})`
+        );
+      }
+
+      if (Array.isArray(data.data) && data.data.length > 0) {
         totalAccounts += data.data.length;
         await saveOrUpdateAdAccounts(data.data, token, type);
       }
@@ -38,10 +56,10 @@ export async function fetchAllAdAccounts(
     console.log(
       `✅ Sincronização concluída. Total de contas processadas: ${totalAccounts}`
     );
-    return { totalAccounts }; // ← aqui
+    return { totalAccounts };
   } catch (error) {
     console.error("❌ Erro ao buscar contas de anúncio:", error);
-    throw error; // ← aqui
+    throw error;
   }
 }
 

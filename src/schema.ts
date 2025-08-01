@@ -6,6 +6,8 @@ import {
   ClienteTransacao,
   ContaLimite,
   ContaTransacao,
+  Insights,
+  GastoDiario,
   Usuario
 } from "./graphql/resolvers";
 
@@ -18,6 +20,8 @@ export const createSchema = async () => {
       ClienteTransacao,
       ContaLimite,
       ContaTransacao,
+      Insights,
+      GastoDiario,
       Usuario
     ],
   });

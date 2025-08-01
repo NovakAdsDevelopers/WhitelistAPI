@@ -38,11 +38,25 @@ export class ClienteContaAnuncio {
   @Field((type) => ContasAnuncio)
   contaAnuncio!: ContasAnuncio;
 }
+@ObjectType()
+export class ClienteContaAnuncioResult {
+  @Field(() => [ClienteContaAnuncio])
+  result!: ClienteContaAnuncio[];
+
+  @Field(() => PaginationInfo)
+  pageInfo!: PaginationInfo;
+}
 
 @ObjectType()
 export class SetClienteContaAnuncioResponse {
   @Field(() => [ClienteContaAnuncio])
   associacoes!: ClienteContaAnuncio[];
+}
+
+@ObjectType()
+export class PutClienteContaAnuncioResponse {
+  @Field((type) => Int)
+  id!: number;
 }
 
 @ObjectType()
@@ -52,13 +66,4 @@ export class SetTransacaoClienteContaAnuncioResponse {
 
   @Field((type) => Int)
   clienteId!: number;
-}
-
-@ObjectType()
-export class ClienteContaAnuncioResult {
-  @Field(() => [ClienteContaAnuncio])
-  result!: ClienteContaAnuncio[];
-
-  @Field(() => PaginationInfo)
-  pageInfo!: PaginationInfo;
 }
