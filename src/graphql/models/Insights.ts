@@ -23,3 +23,24 @@ export class PanelInsightsResponse {
   @Field(() => InsightsPanel)
   contasInativas!: InsightsPanel;
 }
+
+@ObjectType()
+export class RankingContasPeriodo {
+  @Field()
+  id!: string;
+
+  @Field()
+  nome!: string;
+
+  @Field(() => Float)
+  gastoTotal!: number;
+
+  @Field({ nullable: true })
+  moeda?: string;
+
+  @Field({ nullable: true })
+  fusoHorario?: string;
+
+  @Field({ nullable: true })
+  status?: number;
+}

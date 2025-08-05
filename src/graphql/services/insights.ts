@@ -63,4 +63,86 @@ export class InsightsService {
       contasInativas: calcularMetricas(contasInativas),
     };
   }
+
+  async Ranking(startDate: string, endDate?: string) {
+    const dataInicio = new Date(startDate);
+    const dataFim = endDate ? new Date(endDate) : new Date();
+
+    dataInicio.setHours(0, 0, 0, 0);
+    dataFim.setHours(23, 59, 59, 999);
+
+    console.log("▶️ [Ranking] Período:", {
+      dataInicio: dataInicio.toISOString(),
+      dataFim: dataFim.toISOString(),
+    });
+
+    const ranking = await this.prisma.gastoDiario.groupBy({
+      by: ["contaAnuncioId"],
+      where: {
+        data: {
+          gte: dataInicio,
+          lte: dataFim,
+        },
+      },
+      _sum: {
+        gasto: true,
+      },
+      orderBy: {
+        _sum: {
+          gasto: "desc",
+        },
+      },
+      take: 25,
+    });
+
+    console.log("📊 [Ranking] Resultado do groupBy:", ranking);
+
+    const contas = await this.prisma.adAccount.findMany({
+      where: {
+        id: {
+          in: ranking.map((r) => r.contaAnuncioId),
+        },
+      },
+      select: {
+        id: true,
+        nome: true,
+        moeda: true,
+        fusoHorario: true,
+        status: true,
+      },
+    });
+
+    console.log("✅ [Ranking] Contas encontradas no findMany:", contas);
+
+    const contasMap = new Map(contas.map((conta) => [conta.id, conta]));
+
+    const resultado = ranking
+      .map((r) => {
+        const conta = contasMap.get(r.contaAnuncioId);
+        if (!conta) {
+          console.warn(
+            `⚠️ [Ranking] Conta não encontrada para ID: ${r.contaAnuncioId}`
+          );
+          return null;
+        }
+
+        const resultadoConta = {
+          id: conta.id,
+          nome: conta.nome,
+          gastoTotal: Number(r._sum.gasto ?? 0),
+          moeda: conta.moeda,
+          fusoHorario: conta.fusoHorario,
+          status: conta.status,
+        };
+
+        console.log("📦 [Ranking] Resultado individual:", resultadoConta);
+
+        return resultadoConta;
+      })
+      .filter((item): item is Exclude<typeof item, null> => item !== null);
+
+    console.log("✅ [Ranking] Resultado final:", resultado);
+
+    return resultado;
+  }
 }

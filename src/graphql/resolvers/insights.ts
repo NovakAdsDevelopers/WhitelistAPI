@@ -2,7 +2,10 @@ import { Resolver, Query, Arg } from "type-graphql";
 import { GastoTotalInput } from "../inputs/GastoTotalInput";
 import { ContaGastoTotal } from "../models/ContaGastoTotal";
 import { InsightsService } from "../services/insights";
-import { PanelInsightsResponse } from "../models/Insights";
+import {
+  PanelInsightsResponse,
+  RankingContasPeriodo,
+} from "../models/Insights";
 
 @Resolver()
 export class InsightsResolver {
@@ -19,5 +22,14 @@ export class InsightsResolver {
     );
 
     return insightsPanel;
+  }
+
+  @Query(() => [RankingContasPeriodo])
+  async GetInsightsPanelRelatorioRanking(
+    @Arg("startDate", () => String) startDate: string,
+    @Arg("endDate", () => String, { nullable: true }) endDate?: string
+  ) {
+    const ranking = await this.insightsService.Ranking(startDate, endDate);
+    return ranking;
   }
 }
