@@ -1,4 +1,16 @@
 import { PrismaClient } from "@prisma/client";
+import {
+  subDays,
+  subMonths,
+  startOfMonth,
+  startOfYear,
+  format,
+  eachDayOfInterval,
+  eachMonthOfInterval
+} from "date-fns";
+import { ptBR } from 'date-fns/locale';
+
+
 
 export class InsightsService {
   private prisma = new PrismaClient();
@@ -144,5 +156,75 @@ export class InsightsService {
     console.log("✅ [Ranking] Resultado final:", resultado);
 
     return resultado;
+  }
+
+  async GastosPeriodos(type: "week" | "mounth" | "tree-mouth" | "year") {
+    const today = new Date();
+    let startDate: Date;
+    let groupBy: "day" | "month";
+
+    switch (type) {
+      case "week":
+        startDate = subDays(today, 6);
+        groupBy = "day";
+        break;
+      case "mounth":
+        startDate = startOfMonth(today);
+        groupBy = "day";
+        break;
+      case "tree-mouth":
+        startDate = startOfMonth(subMonths(today, 2));
+        groupBy = "month";
+        break;
+      case "year":
+        startDate = startOfYear(today);
+        groupBy = "month";
+        break;
+      default:
+        throw new Error("Tipo de período inválido");
+    }
+
+    // Busca os dados de gasto dentro do período
+    const registros = await this.prisma.gastoDiario.findMany({
+      where: {
+        data: {
+          gte: startDate,
+          lte: today,
+        },
+      },
+      select: {
+        data: true,
+        gasto: true,
+      },
+    });
+
+    // Agrupando os gastos por período
+    const mapa: Record<string, number> = {};
+
+    for (const item of registros) {
+      const chave =
+        groupBy === "day"
+          ? format(item.data, "dd/MM", { locale: ptBR })
+          : format(item.data, "MMM", { locale: ptBR });
+
+      mapa[chave] = (mapa[chave] || 0) + Number(item.gasto);
+    }
+
+    // Garantindo que todos os períodos estejam presentes com valor 0 se não houver dados
+    const categories =
+      groupBy === "day"
+        ? eachDayOfInterval({ start: startDate, end: today }).map((date) =>
+            format(date, "dd/MM", { locale: ptBR })
+          )
+        : eachMonthOfInterval({ start: startDate, end: today }).map((date) =>
+            format(date, "MMM", { locale: ptBR })
+          );
+
+    const data = categories.map((label) => (mapa[label] ?? 0) / 100); // centavos → reais
+
+    return {
+      data,
+      categories,
+    };
   }
 }

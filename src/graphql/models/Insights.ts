@@ -44,3 +44,12 @@ export class RankingContasPeriodo {
   @Field({ nullable: true })
   status?: number;
 }
+
+@ObjectType()
+export class GastosPeriodosResponse {
+  @Field(() => [String])
+  categories!: string[];
+
+  @Field(() => [Float])
+  data!: number[];
+}

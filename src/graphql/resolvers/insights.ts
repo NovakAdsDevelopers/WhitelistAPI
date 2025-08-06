@@ -1,10 +1,10 @@
+// src/graphql/resolvers/InsightsResolver.ts
 import { Resolver, Query, Arg } from "type-graphql";
-import { GastoTotalInput } from "../inputs/GastoTotalInput";
-import { ContaGastoTotal } from "../models/ContaGastoTotal";
 import { InsightsService } from "../services/insights";
 import {
+  GastosPeriodosResponse,
   PanelInsightsResponse,
-  RankingContasPeriodo,
+  RankingContasPeriodo
 } from "../models/Insights";
 
 @Resolver()
@@ -16,12 +16,7 @@ export class InsightsResolver {
     @Arg("startDate", () => String) startDate: string,
     @Arg("endDate", () => String, { nullable: true }) endDate?: string
   ) {
-    const insightsPanel = await this.insightsService.PanelInsights(
-      startDate,
-      endDate
-    );
-
-    return insightsPanel;
+    return this.insightsService.PanelInsights(startDate, endDate);
   }
 
   @Query(() => [RankingContasPeriodo])
@@ -29,7 +24,14 @@ export class InsightsResolver {
     @Arg("startDate", () => String) startDate: string,
     @Arg("endDate", () => String, { nullable: true }) endDate?: string
   ) {
-    const ranking = await this.insightsService.Ranking(startDate, endDate);
-    return ranking;
+    return this.insightsService.Ranking(startDate, endDate);
+  }
+
+  // ✅ Novo método para gráfico de linha
+  @Query(() => GastosPeriodosResponse)
+  async GetInsightsGastosPeriodos(
+    @Arg("type", () => String) type: "week" | "mounth" | "tree-mouth" | "year"
+  ): Promise<GastosPeriodosResponse> {
+    return this.insightsService.GastosPeriodos(type);
   }
 }
