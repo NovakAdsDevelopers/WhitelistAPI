@@ -1,120 +1,191 @@
 import { PrismaClient } from "@prisma/client";
-import {
-  subDays,
-  subMonths,
-  startOfMonth,
-  startOfYear,
-  format,
-  eachDayOfInterval,
-  eachMonthOfInterval
-} from "date-fns";
-import { ptBR } from 'date-fns/locale';
 
+type PeriodType = "week" | "mounth" | "tree-mouth" | "year";
 
+const prismaSingleton = new PrismaClient();
+
+/* ---------- Utils de data (UTC, sem libs) ---------- */
+
+function isoDay(date: Date): string {
+  // "2025-08-08"
+  return date.toISOString().slice(0, 10);
+}
+
+function toUtcMidnight(dateStrYYYYMMDD: string): Date {
+  // "2025-08-08" -> 2025-08-08T00:00:00.000Z
+  return new Date(`${dateStrYYYYMMDD}T00:00:00.000Z`);
+}
+
+function addDaysToDateStr(dateStrYYYYMMDD: string, days: number): string {
+  const d = toUtcMidnight(dateStrYYYYMMDD);
+  d.setUTCDate(d.getUTCDate() + days);
+  return isoDay(d);
+}
+
+function buildDateRangeByDay(
+  startISO: string,
+  endISO?: string
+): { gte: Date; lt: Date } {
+  // Recebe strings ISO (com ou sem "Z"). Corta para "YYYY-MM-DD".
+  const startDay = startISO.split("T")[0]; // "YYYY-MM-DD"
+  const endDay = (endISO ?? startISO).split("T")[0];
+
+  const gte = toUtcMidnight(startDay);
+  // intervalo exclusivo no fim (dia seguinte 00:00Z)
+  const endNextDay = addDaysToDateStr(endDay, 1);
+  const lt = toUtcMidnight(endNextDay);
+
+  return { gte, lt };
+}
+
+// Avança um dia UTC
+function addUtcDays(d: Date, days: number): Date {
+  const nd = new Date(d.getTime());
+  nd.setUTCDate(nd.getUTCDate() + days);
+  return nd;
+}
+
+/* ---------- Helpers de rótulos ---------- */
+
+function formatDayLabelUTC(d: Date): string {
+  // dd/MM usando UTC
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}`;
+}
+
+const PT_BR_MONTHS_SHORT = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+];
+
+function monthShortLabelUTC(d: Date): string {
+  return PT_BR_MONTHS_SHORT[d.getUTCMonth()];
+}
+
+function isoMonth(date: Date): string {
+  // "YYYY-MM"
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+function eachDayISO(startInclusive: Date, endInclusive: Date): string[] {
+  const out: string[] = [];
+  const d = new Date(startInclusive.getTime());
+  while (d.getTime() <= endInclusive.getTime()) {
+    out.push(isoDay(d));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
+
+function eachMonthISO(startInclusive: Date, endInclusive: Date): string[] {
+  const out: string[] = [];
+  const d = new Date(Date.UTC(startInclusive.getUTCFullYear(), startInclusive.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(endInclusive.getUTCFullYear(), endInclusive.getUTCMonth(), 1));
+  while (d.getTime() <= end.getTime()) {
+    out.push(isoMonth(d));
+    d.setUTCMonth(d.getUTCMonth() + 1);
+  }
+  return out;
+}
+
+/* ---------- Service ---------- */
 
 export class InsightsService {
-  private prisma = new PrismaClient();
+  private prisma = prismaSingleton;
 
-  async PanelInsights(startDate: string, endDate?: string) {
-    const dataInicio = new Date(startDate);
-    const dataFim = endDate ? new Date(endDate) : new Date();
+  // Panel: respeita o período e calcula gasto pelo GastoDiario do intervalo (EM REAIS)
+async PanelInsights(startDate: string, endDate?: string) {
+  const { gte, lt } = buildDateRangeByDay(startDate, endDate);
 
-    dataInicio.setHours(0, 0, 0, 0);
-    dataFim.setHours(23, 59, 59, 999);
+  // Janela de 7 dias baseada no endDate (inclui o dia do endDate)
+  const end = endDate ? new Date(endDate) : new Date();
+  // Normaliza pra meia-noite UTC do dia seguinte pra usar como "lt" exclusivo
+  const endDayStartUTC = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate(), 0, 0, 0, 0));
+  const last7Gte = new Date(endDayStartUTC); last7Gte.setUTCDate(last7Gte.getUTCDate() - 6); // volta 6 dias
+  const last7Lt = new Date(endDayStartUTC); last7Lt.setUTCDate(last7Lt.getUTCDate() + 1);     // exclusivo: dia seguinte
 
-    const seteDiasAtras = new Date();
-    seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
-    seteDiasAtras.setHours(0, 0, 0, 0);
-
-    const adAccounts = await this.prisma.adAccount.findMany({
-      include: {
-        GastoDiario: {
-          where: {
-            data: {
-              gte: seteDiasAtras,
-            },
+  const adAccounts = await this.prisma.adAccount.findMany({
+    select: {
+      id: true,
+      saldo: true,      // centavos (Decimal)
+      saldoMeta: true,  // centavos (string)
+      // Gastos do PERÍODO solicitado (para métricas)
+      GastoDiario: {
+        where: { data: { gte, lt } },
+        select: { gasto: true }, // em REAIS
+      },
+      // Usa a MESMA relação com _count para classificar (7 dias até endDate)
+      _count: {
+        select: {
+          GastoDiario: {
+            where: { data: { gte: last7Gte, lt: last7Lt } }, // 7 dias (inclusive endDate)
           },
         },
       },
-    });
+    },
+  });
 
-    const contasAtivas = adAccounts.filter(
-      (conta) => conta.GastoDiario.length > 0
-    );
+  const contasAtivas = adAccounts.filter((c) => c._count.GastoDiario > 0);
+  const contasInativas = adAccounts.filter((c) => c._count.GastoDiario === 0);
 
-    const contasInativas = adAccounts.filter(
-      (conta) => conta.GastoDiario.length === 0
-    );
+  const calcularMetricas = (lista: typeof adAccounts) => {
+    const gastoPeriodoReais = lista.reduce((acc, conta) => {
+      const somaConta = conta.GastoDiario.reduce((s, g) => s + Number(g.gasto), 0);
+      return acc + somaConta;
+    }, 0);
 
-    const calcularMetricas = (lista: typeof adAccounts) => {
-      const gastoTotal = lista.reduce(
-        (acc, conta) => acc + conta.gastoTotal.toNumber(),
-        0
-      ); // centavos
-
-      const saldoTotal = lista.reduce(
-        (acc, conta) => acc + conta.saldo.toNumber(),
-        0
-      ); // reais
-
-      const saldoMeta = lista.reduce(
-        (acc, conta) => acc + parseFloat(conta.saldoMeta),
-        0
-      );
-
-      return {
-        quantidade: lista.length,
-        gastoTotal: gastoTotal / 100,
-        saldoTotal: saldoTotal / 100,
-        saldoMeta: saldoMeta / 100, // Convertendo centavos para reais
-      };
-    };
+    const saldoTotalCentavos = lista.reduce((acc, conta) => acc + conta.saldo.toNumber(), 0);
+    const saldoMetaCentavos = lista.reduce((acc, conta) => acc + parseFloat(conta.saldoMeta), 0);
 
     return {
-      contasAtivas: calcularMetricas(contasAtivas),
-      contasInativas: calcularMetricas(contasInativas),
+      quantidade: lista.length,
+      gastoTotal: gastoPeriodoReais,       // já em reais
+      saldoTotal: saldoTotalCentavos / 100,
+      saldoMeta: saldoMetaCentavos / 100,
     };
-  }
+  };
+
+  return {
+    contasAtivas: calcularMetricas(contasAtivas),
+    contasInativas: calcularMetricas(contasInativas),
+    periodoUTC: { gte: gte.toISOString(), lt: lt.toISOString() },
+    janelaClassificacao7dUTC: { gte: last7Gte.toISOString(), lt: last7Lt.toISOString() },
+  };
+}
+
+
 
   async Ranking(startDate: string, endDate?: string) {
-    const dataInicio = new Date(startDate);
-    const dataFim = endDate ? new Date(endDate) : new Date();
+    const { gte, lt } = buildDateRangeByDay(startDate, endDate);
 
-    dataInicio.setHours(0, 0, 0, 0);
-    dataFim.setHours(23, 59, 59, 999);
-
-    console.log("▶️ [Ranking] Período:", {
-      dataInicio: dataInicio.toISOString(),
-      dataFim: dataFim.toISOString(),
+    console.log("▶️ [Ranking] Período (datas UTC):", {
+      gte: gte.toISOString(),
+      lt: lt.toISOString(),
     });
 
     const ranking = await this.prisma.gastoDiario.groupBy({
       by: ["contaAnuncioId"],
-      where: {
-        data: {
-          gte: dataInicio,
-          lte: dataFim,
-        },
-      },
-      _sum: {
-        gasto: true,
-      },
-      orderBy: {
-        _sum: {
-          gasto: "desc",
-        },
-      },
+      where: { data: { gte, lt } },
+      _sum: { gasto: true },
+      orderBy: { _sum: { gasto: "desc" } },
       take: 25,
     });
 
-    console.log("📊 [Ranking] Resultado do groupBy:", ranking);
-
     const contas = await this.prisma.adAccount.findMany({
-      where: {
-        id: {
-          in: ranking.map((r) => r.contaAnuncioId),
-        },
-      },
+      where: { id: { in: ranking.map((r) => r.contaAnuncioId) } },
       select: {
         id: true,
         nome: true,
@@ -124,107 +195,124 @@ export class InsightsService {
       },
     });
 
-    console.log("✅ [Ranking] Contas encontradas no findMany:", contas);
-
-    const contasMap = new Map(contas.map((conta) => [conta.id, conta]));
-
+    const contasMap = new Map(contas.map((c) => [c.id, c]));
     const resultado = ranking
       .map((r) => {
         const conta = contasMap.get(r.contaAnuncioId);
         if (!conta) {
-          console.warn(
-            `⚠️ [Ranking] Conta não encontrada para ID: ${r.contaAnuncioId}`
-          );
+          console.warn(`⚠️ [Ranking] Conta não encontrada: ${r.contaAnuncioId}`);
           return null;
         }
-
-        const resultadoConta = {
+        const out = {
           id: conta.id,
           nome: conta.nome,
-          gastoTotal: Number(r._sum.gasto ?? 0),
+          gastoTotal: Number(r._sum.gasto ?? 0), // em REAIS
           moeda: conta.moeda,
           fusoHorario: conta.fusoHorario,
           status: conta.status,
         };
-
-        console.log("📦 [Ranking] Resultado individual:", resultadoConta);
-
-        return resultadoConta;
+        console.log("📦 [Ranking] Resultado individual:", out);
+        return out;
       })
-      .filter((item): item is Exclude<typeof item, null> => item !== null);
-
-    console.log("✅ [Ranking] Resultado final:", resultado);
+      .filter((x): x is NonNullable<typeof x> => x !== null);
 
     return resultado;
   }
 
-  async GastosPeriodos(type: "week" | "mounth" | "tree-mouth" | "year") {
-    const today = new Date();
-    let startDate: Date;
+  // Mantendo as chaves originais ("mounth", "tree-mouth")
+  async GastosPeriodos(type: PeriodType) {
+    // Hoje por DATA (UTC)
+    const todayStr = isoDay(new Date());
+
+    let startStr: string;
     let groupBy: "day" | "month";
 
     switch (type) {
-      case "week":
-        startDate = subDays(today, 6);
+      case "week": {
+        startStr = addDaysToDateStr(todayStr, -6); // últimos 7 dias incluindo hoje
         groupBy = "day";
         break;
-      case "mounth":
-        startDate = startOfMonth(today);
+      }
+      case "mounth": {
+        const today = toUtcMidnight(todayStr);
+        const firstOfMonth = new Date(
+          Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)
+        );
+        startStr = isoDay(firstOfMonth);
         groupBy = "day";
         break;
-      case "tree-mouth":
-        startDate = startOfMonth(subMonths(today, 2));
+      }
+      case "tree-mouth": {
+        const today = toUtcMidnight(todayStr);
+        const firstTwoMonthsAgo = new Date(
+          Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 2, 1)
+        );
+        startStr = isoDay(firstTwoMonthsAgo);
         groupBy = "month";
         break;
-      case "year":
-        startDate = startOfYear(today);
+      }
+      case "year": {
+        const today = toUtcMidnight(todayStr);
+        const firstOfYear = new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+        startStr = isoDay(firstOfYear);
         groupBy = "month";
         break;
+      }
       default:
         throw new Error("Tipo de período inválido");
     }
 
-    // Busca os dados de gasto dentro do período
+    // Janela por data: [gte start, lt end+1dia]
+    const { gte, lt } = buildDateRangeByDay(startStr, todayStr);
+
     const registros = await this.prisma.gastoDiario.findMany({
-      where: {
-        data: {
-          gte: startDate,
-          lte: today,
-        },
-      },
-      select: {
-        data: true,
-        gasto: true,
-      },
+      where: { data: { gte, lt } },
+      select: { data: true, gasto: true }, // gasto EM REAIS
     });
 
-    // Agrupando os gastos por período
-    const mapa: Record<string, number> = {};
+    if (groupBy === "day") {
+      // ---- Agrupar por DIA (YYYY-MM-DD) ----
+      const mapaPorDiaISO: Record<string, number> = {};
+      for (const item of registros) {
+        const dayISO = isoDay(item.data); // chave estável
+        mapaPorDiaISO[dayISO] = (mapaPorDiaISO[dayISO] || 0) + Number(item.gasto);
+      }
 
-    for (const item of registros) {
-      const chave =
-        groupBy === "day"
-          ? format(item.data, "dd/MM", { locale: ptBR })
-          : format(item.data, "MMM", { locale: ptBR });
+      // Ordena categorias por ISO e depois formata rótulo dd/MM
+      const startUTC = toUtcMidnight(startStr);
+      const endUTC = toUtcMidnight(todayStr);
+      const categoriesISO = eachDayISO(startUTC, endUTC);
 
-      mapa[chave] = (mapa[chave] || 0) + Number(item.gasto);
+      const categories = categoriesISO.map((iso) => formatDayLabelUTC(toUtcMidnight(iso)));
+      const data = categoriesISO.map((iso) => (mapaPorDiaISO[iso] ?? 0)); // EM REAIS
+
+      return {
+        data,
+        categories,
+        periodoUTC: { gte: gte.toISOString(), lt: lt.toISOString() },
+      };
+    } else {
+      // ---- Agrupar por MÊS (YYYY-MM) ----
+      const mapaPorMesISO: Record<string, number> = {};
+      for (const item of registros) {
+        const ym = isoMonth(item.data);
+        mapaPorMesISO[ym] = (mapaPorMesISO[ym] || 0) + Number(item.gasto);
+      }
+
+      const startUTC = toUtcMidnight(startStr);
+      const endUTC = toUtcMidnight(todayStr);
+      const categoriesYM = eachMonthISO(startUTC, endUTC); // ["YYYY-MM", ...]
+
+      const categories = categoriesYM.map((ym) => {
+        const [y, m] = ym.split("-").map(Number);
+        return monthShortLabelUTC(new Date(Date.UTC(y, m - 1, 1))); // "jan", "fev", ...
+      });
+      const data = categoriesYM.map((ym) => (mapaPorMesISO[ym] ?? 0)); // EM REAIS
+      return {
+        data,
+        categories,
+        periodoUTC: { gte: gte.toISOString(), lt: lt.toISOString() },
+      };
     }
-
-    // Garantindo que todos os períodos estejam presentes com valor 0 se não houver dados
-    const categories =
-      groupBy === "day"
-        ? eachDayOfInterval({ start: startDate, end: today }).map((date) =>
-            format(date, "dd/MM", { locale: ptBR })
-          )
-        : eachMonthOfInterval({ start: startDate, end: today }).map((date) =>
-            format(date, "MMM", { locale: ptBR })
-          );
-
-    const data = categories.map((label) => (mapa[label] ?? 0) / 100); // centavos → reais
-
-    return {
-      data,
-      categories,
-    };
   }
 }
