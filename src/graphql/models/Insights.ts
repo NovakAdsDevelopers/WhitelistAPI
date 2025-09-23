@@ -37,6 +37,9 @@ export class RankingContasPeriodo {
 
   @Field({ nullable: true })
   moeda?: string;
+  
+  @Field({ nullable: true })
+  saldoMeta?: string;
 
   @Field({ nullable: true })
   fusoHorario?: string;

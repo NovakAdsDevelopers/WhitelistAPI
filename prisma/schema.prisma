@@ -72,7 +72,22 @@ model AdAccount {
   transacoesDestino TransacaoConta[]      @relation("ContaDestino")
   transacoesOrigem  TransacaoConta[]      @relation("ContaOrigem")
 
-  BM String?
+  AdAccountStatusChange AdAccountStatusChange[]
+
+  BM   BM?     @relation(fields: [BMId], references: [BMId])
+  BMId String?
+}
+
+model AdAccountStatusChange {
+  id         BigInt   @id @default(autoincrement())
+  accountId  String   @map("account_id") // referencia AdAccount.id (account_id)
+  name       String?  @map("name") // nome da conta
+  date       DateTime @default(now()) @map("date") // data da mudança
+  fromStatus Int      @map("from_status") // 1 ou 2
+  toStatus   Int      @map("to_status") // 1 ou 2
+  value      String?  @map("value") // valor da mudança
+
+  account AdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 }
 
 model ClienteContaAnuncio {
@@ -148,6 +163,37 @@ model GastoDiario {
   @@index([contaAnuncioId, data])
 }
 
+model BM {
+  id           Int      @id @default(autoincrement())
+  BMId         String   @unique
+  nome         String
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  // Relação com Token
+  tokenId Int
+  token   Token @relation(fields: [tokenId], references: [id])
+
+  AdAccounts AdAccount[]
+}
+
+model Token {
+  id         Int      @id @default(autoincrement())
+  title      String   @unique
+  client_id  String   @unique
+  secret_id  String   @unique
+  last_token String   @unique
+  token      String   @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  cor        String?  @default("#000000")
+  img        String?  @default("https://example.com/default-image.png")
+  situacao  String?  @default("ATIVO")
+
+  // Relação inversa
+  bms BM[]
+}
+
 enum TipoUsuario {
   ADMIN
   GERENTE
@@ -163,4 +209,100 @@ enum TipoTransacaoConta {
   ENTRADA
   SAIDA
   REALOCACAO
+}
+
+// NovakACADEMY
+
+model Trilha {
+  id         Int      @id @default(autoincrement())
+  nome       String
+  descricao  String?
+  created_at DateTime @default(now())
+
+  modulos Modulo[]
+}
+
+model Modulo {
+  id         Int      @id @default(autoincrement())
+  nome       String
+  descricao  String?
+  created_at DateTime @default(now())
+
+  // FK -> Trilha
+  trilhaId Int
+  trilha   Trilha @relation(fields: [trilhaId], references: [id], onDelete: Cascade)
+
+  secoes Secao[]
+
+  // Total de duração (em segundos) agregado de todas as aulas do módulo
+  totalDurationSeconds Int @default(0)
+
+  @@index([trilhaId])
+}
+
+model Secao {
+  id         Int      @id @default(autoincrement())
+  nome       String
+  descricao  String?
+  created_at DateTime @default(now())
+  moduloId   Int
+  modulo     Modulo   @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+
+  aulas                Aula[]
+  totalDurationSeconds Int    @default(0)
+
+  atividades Atividade[]
+
+  @@index([moduloId])
+}
+
+model Atividade {
+  id      Int   @id @default(autoincrement())
+  secaoId Int
+  secao   Secao @relation(fields: [secaoId], references: [id], onDelete: Cascade)
+
+  // Array de perguntas e respostas no formato JSON
+  // Estrutura sugerida abaixo
+  quiz Json
+
+  titulo     String?
+  descricao  String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([secaoId])
+}
+
+model Aula {
+  id         Int      @id @default(autoincrement())
+  nome       String
+  descricao  String?
+  created_at DateTime @default(now())
+
+  // FK -> Secao
+  secaoId Int
+  secao   Secao @relation(fields: [secaoId], references: [id], onDelete: Cascade)
+
+  // URL do vídeo (obrigatória)
+  videoUrl String
+
+  // Duração da aula em segundos (obrigatória para facilitar agregações)
+  durationSeconds Int
+
+  anexos Anexo[]
+
+  @@index([secaoId])
+}
+
+model Anexo {
+  id          Int      @id @default(autoincrement())
+  title       String
+  downloadUrl String
+  created_at  DateTime @default(now())
+
+  // FK -> Aula
+  aulaId Int
+  aula   Aula @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+
+  @@index([aulaId])
 }

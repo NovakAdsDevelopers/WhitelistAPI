@@ -13,18 +13,20 @@ export class InsightsResolver {
 
   @Query(() => PanelInsightsResponse)
   async GetInsightsPanel(
+    @Arg("BMs", () => [String], { nullable: true }) BMs: string[],
     @Arg("startDate", () => String) startDate: string,
-    @Arg("endDate", () => String, { nullable: true }) endDate?: string
+    @Arg("endDate", () => String, { nullable: true }) endDate?: string,
   ) {
-    return this.insightsService.PanelInsights(startDate, endDate);
+    return this.insightsService.PanelInsights(BMs, startDate, endDate, );
   }
 
   @Query(() => [RankingContasPeriodo])
   async GetInsightsPanelRelatorioRanking(
+    @Arg("BMs", () => [String], { nullable: true }) BMs: string[],
     @Arg("startDate", () => String) startDate: string,
-    @Arg("endDate", () => String, { nullable: true }) endDate?: string
+    @Arg("endDate", () => String, { nullable: true }) endDate?: string,
   ) {
-    return this.insightsService.Ranking(startDate, endDate);
+    return this.insightsService.Ranking(BMs, startDate, endDate);
   }
 
   // ✅ Novo método para gráfico de linha

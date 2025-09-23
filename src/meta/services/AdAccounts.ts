@@ -4,15 +4,10 @@ import axios from "axios";
 import { saveOrUpdateAdAccounts } from "./Account";
 
 // Busca contas com paginação
-export async function fetchAllAdAccounts(
-  url: string,
-  token: string,
-  type: "BM1" | "BM2"
-) {
+export async function fetchAllAdAccounts(token: string) {
   console.log("🔄 Iniciando busca de contas de anúncio no Meta API...");
-  console.log("Buscando contas da BM: " + type);
   try {
-    let nextUrl: string | null = url;
+    let nextUrl: string | null = `https://graph.facebook.com/v23.0/me/adaccounts`;
     let totalAccounts = 0;
     let isFirstPage = true;
 
@@ -22,7 +17,6 @@ export async function fetchAllAdAccounts(
       let response;
 
       if (isFirstPage) {
-        // Primeira requisição: monta a URL com os parâmetros
         response = await axios.get(nextUrl, {
           params: {
             access_token: token,
@@ -33,7 +27,6 @@ export async function fetchAllAdAccounts(
         });
         isFirstPage = false;
       } else {
-        // Nas próximas páginas: usar paging.next como está
         response = await axios.get(nextUrl);
       }
 
@@ -47,7 +40,7 @@ export async function fetchAllAdAccounts(
 
       if (Array.isArray(data.data) && data.data.length > 0) {
         totalAccounts += data.data.length;
-        await saveOrUpdateAdAccounts(data.data, token, type);
+        await saveOrUpdateAdAccounts(data.data, token);
       }
 
       nextUrl = data.paging?.next || null;
@@ -63,19 +56,39 @@ export async function fetchAllAdAccounts(
   }
 }
 
-export async function fetchAdAccountsByIds(
-  accountIds: string[],
-  token: string,
-  type: "BM1" | "BM2"
-) {
+
+export async function fetchAdAccountsByIds(accountIds: string[]) {
   console.log(`🔍 Iniciando sincronização de contas específicas:`, accountIds);
 
   const results: any[] = [];
 
   for (const accountId of accountIds) {
     try {
+      // 1️⃣ Descobrir a BM associada à conta
+      const adAccount = await prisma.adAccount.findUnique({
+        where: { id: accountId },
+        include: {
+          BM: {
+            include: { token: true }, // pega o token associado
+          },
+        },
+      });
+
+      if (!adAccount || !adAccount.BM || !adAccount.BM.token) {
+        console.warn(
+          `⚠️ Conta ${accountId} não está associada a nenhuma BM/token.`
+        );
+        continue;
+      }
+
+      const token = adAccount.BM.token.token; // pega o token correto
+      console.log(
+        `🔑 Usando token da BM (${adAccount.BM.nome}) para conta ${accountId}`
+      );
+
+      // 2️⃣ Chamar a API do Meta com o token correto
       const response = await axios.get(
-        `https://graph.facebook.com/v17.0/act_${accountId}`,
+        `https://graph.facebook.com/v23.0/act_${accountId}`,
         {
           params: {
             access_token: token,
@@ -84,8 +97,9 @@ export async function fetchAdAccountsByIds(
           },
         }
       );
-
+      // 3️⃣ Montar resultado
       if (response.data) {
+        console.log(`🔹 Dados recebidos para conta ${accountId}:`, response.data);
         results.push({
           ...response.data,
           account_id: accountId,
@@ -97,13 +111,23 @@ export async function fetchAdAccountsByIds(
     }
   }
 
+  // 4️⃣ Salvar/atualizar no banco
   if (results.length > 0) {
-    await saveOrUpdateAdAccounts(results, token, type);
+    // aqui pode ser que cada conta use um token diferente, então talvez precise salvar uma a uma
+    for (const account of results) {
+      const adAccount = await prisma.adAccount.findUnique({
+        where: { id: account.account_id },
+        include: { BM: { include: { token: true } } },
+      });
+
+      if (adAccount?.BM?.token) {
+        await saveOrUpdateAdAccounts([account], adAccount.BM.token.token);
+      }
+    }
   } else {
     console.log("⚠️ Nenhuma conta válida encontrada para atualizar.");
   }
 }
-
 // Busca e salva gasto diário dos últimos 7 dias
 export async function fetchAdAccountDailySpend(
   accountId: string,

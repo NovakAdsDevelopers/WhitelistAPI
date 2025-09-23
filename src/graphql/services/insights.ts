@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 type PeriodType = "week" | "mounth" | "tree-mouth" | "year";
 
@@ -106,118 +106,159 @@ function eachMonthISO(startInclusive: Date, endInclusive: Date): string[] {
 export class InsightsService {
   private prisma = prismaSingleton;
 
-  // Panel: respeita o período e calcula gasto pelo GastoDiario do intervalo (EM REAIS)
-async PanelInsights(startDate: string, endDate?: string) {
+// Panel: respeita o período e calcula gasto pelo GastoDiario do intervalo (EM REAIS)
+async PanelInsights(BMs: string[], startDate: string, endDate?: string) {
   const { gte, lt } = buildDateRangeByDay(startDate, endDate);
 
-  // Janela de 7 dias baseada no endDate (inclui o dia do endDate)
-  const end = endDate ? new Date(endDate) : new Date();
-  // Normaliza pra meia-noite UTC do dia seguinte pra usar como "lt" exclusivo
-  const endDayStartUTC = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate(), 0, 0, 0, 0));
-  const last7Gte = new Date(endDayStartUTC); last7Gte.setUTCDate(last7Gte.getUTCDate() - 6); // volta 6 dias
-  const last7Lt = new Date(endDayStartUTC); last7Lt.setUTCDate(last7Lt.getUTCDate() + 1);     // exclusivo: dia seguinte
+const wantsAllBMs =
+    Array.isArray(BMs) && BMs.some(v => String(v).trim().toLowerCase() === 'bms');
+  const shouldFilter = Array.isArray(BMs) && BMs.length > 0 && !wantsAllBMs;
+
+  // ✅ Filtro correto baseado no seu schema (AdAccount.BMId -> BM.BMId)
+  const whereBMs: Prisma.AdAccountWhereInput | undefined = shouldFilter
+    ? { BMId: { in: BMs } }
+    // alternativa relacional (equivalente):
+    // ? { BM: { is: { BMId: { in: BMs } } } }
+    : undefined;
 
   const adAccounts = await this.prisma.adAccount.findMany({
+    where: whereBMs,
     select: {
       id: true,
       saldo: true,      // centavos (Decimal)
       saldoMeta: true,  // centavos (string)
-      // Gastos do PERÍODO solicitado (para métricas)
+      // Gastos SOMENTE do PERÍODO solicitado
       GastoDiario: {
         where: { data: { gte, lt } },
         select: { gasto: true }, // em REAIS
       },
-      // Usa a MESMA relação com _count para classificar (7 dias até endDate)
-      _count: {
-        select: {
-          GastoDiario: {
-            where: { data: { gte: last7Gte, lt: last7Lt } }, // 7 dias (inclusive endDate)
-          },
-        },
-      },
     },
   });
 
-  const contasAtivas = adAccounts.filter((c) => c._count.GastoDiario > 0);
-  const contasInativas = adAccounts.filter((c) => c._count.GastoDiario === 0);
+  // Classificação baseada APENAS no período informado
+  const contasAtivas = adAccounts.filter((c) => c.GastoDiario.length > 0);
+  const contasInativas = adAccounts.filter((c) => c.GastoDiario.length === 0);
 
-  const calcularMetricas = (lista: typeof adAccounts) => {
-    const gastoPeriodoReais = lista.reduce((acc, conta) => {
-      const somaConta = conta.GastoDiario.reduce((s, g) => s + Number(g.gasto), 0);
-      return acc + somaConta;
+  const toInt = (v: unknown, fallback = 0) => {
+  const n = parseInt(String(v), 10);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const calcularMetricas = (lista: typeof adAccounts) => {
+  // Se g.gasto está em reais (number/string), converta para centavos de forma segura:
+  const gastoPeriodoCentavos = lista.reduce((acc, conta) => {
+    const somaContaCentavos = conta.GastoDiario.reduce((s, g) => {
+      const reais = Number(g.gasto) || 0;                // cuidado: pode ser string
+      const cent  = Math.round(reais * 100);             // para centavos
+      return s + cent;
     }, 0);
+    return acc + somaContaCentavos;
+  }, 0);
 
-    const saldoTotalCentavos = lista.reduce((acc, conta) => acc + conta.saldo.toNumber(), 0);
-    const saldoMetaCentavos = lista.reduce((acc, conta) => acc + parseFloat(conta.saldoMeta), 0);
+  // Se saldo é BigNumber (centavos), evite toNumber() (risco de overflow/precisão):
+  // Prefira toString() -> parseInt
+  const saldoTotalCentavos = lista.reduce((acc, conta) => {
+    const cents = "toString" in conta.saldo
+      ? toInt((conta.saldo as any).toString())
+      : toInt((conta.saldo as any));
+    return acc + cents;
+  }, 0);
 
-    return {
-      quantidade: lista.length,
-      gastoTotal: gastoPeriodoReais,       // já em reais
-      saldoTotal: saldoTotalCentavos / 100,
-      saldoMeta: saldoMetaCentavos / 100,
-    };
+  const saldoMetaCentavos = lista.reduce(
+    (acc, conta) => acc + toInt(conta.saldoMeta),
+    0
+  );
+
+  return {
+    quantidade: lista.length,
+    gastoTotal: gastoPeriodoCentavos / 100, // reais
+    saldoTotal: saldoTotalCentavos / 100,   // reais
+    saldoMeta:  saldoMetaCentavos / 100,    // reais
   };
+};
 
   return {
     contasAtivas: calcularMetricas(contasAtivas),
     contasInativas: calcularMetricas(contasInativas),
     periodoUTC: { gte: gte.toISOString(), lt: lt.toISOString() },
-    janelaClassificacao7dUTC: { gte: last7Gte.toISOString(), lt: last7Lt.toISOString() },
   };
 }
 
 
+ async Ranking(BMs: string[], startDate: string, endDate?: string) {
+  const { gte, lt } = buildDateRangeByDay(startDate, endDate);
 
-  async Ranking(startDate: string, endDate?: string) {
-    const { gte, lt } = buildDateRangeByDay(startDate, endDate);
+  console.log("▶️ [Ranking] Período (datas UTC):", {
+    gte: gte.toISOString(),
+    lt: lt.toISOString(),
+  });
 
-    console.log("▶️ [Ranking] Período (datas UTC):", {
-      gte: gte.toISOString(),
-      lt: lt.toISOString(),
-    });
+  // 1) Agrupa gastos no período (igual estava)
+  const ranking = await this.prisma.gastoDiario.groupBy({
+    by: ["contaAnuncioId"],
+    where: { data: { gte, lt } },
+    _sum: { gasto: true },
+    orderBy: { _sum: { gasto: "desc" } }
+  });
 
-    const ranking = await this.prisma.gastoDiario.groupBy({
-      by: ["contaAnuncioId"],
-      where: { data: { gte, lt } },
-      _sum: { gasto: true },
-      orderBy: { _sum: { gasto: "desc" } },
-      take: 25,
-    });
+  const rankingIds = ranking.map((r) => r.contaAnuncioId);
+  if (rankingIds.length === 0) return [];
 
-    const contas = await this.prisma.adAccount.findMany({
-      where: { id: { in: ranking.map((r) => r.contaAnuncioId) } },
-      select: {
-        id: true,
-        nome: true,
-        moeda: true,
-        fusoHorario: true,
-        status: true,
-      },
-    });
+  // 2) Mesma lógica de BMs
+  const wantsAllBMs =
+    Array.isArray(BMs) && BMs.some(v => String(v).trim().toLowerCase() === 'bms');
+  const shouldFilter = Array.isArray(BMs) && BMs.length > 0 && !wantsAllBMs;
 
-    const contasMap = new Map(contas.map((c) => [c.id, c]));
-    const resultado = ranking
-      .map((r) => {
-        const conta = contasMap.get(r.contaAnuncioId);
-        if (!conta) {
-          console.warn(`⚠️ [Ranking] Conta não encontrada: ${r.contaAnuncioId}`);
-          return null;
-        }
-        const out = {
-          id: conta.id,
-          nome: conta.nome,
-          gastoTotal: Number(r._sum.gasto ?? 0), // em REAIS
-          moeda: conta.moeda,
-          fusoHorario: conta.fusoHorario,
-          status: conta.status,
-        };
-        console.log("📦 [Ranking] Resultado individual:", out);
-        return out;
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null);
+  // Filtro de contas: sempre restringe aos IDs do ranking;
+  // se precisar, aplica também BMId IN BMs
+  const whereContas = shouldFilter
+    ? { id: { in: rankingIds }, BMId: { in: BMs } }
+    : { id: { in: rankingIds } };
+  // (Alternativa relacional equivalente)
+  // const whereContas = shouldFilter
+  //   ? { id: { in: rankingIds }, BM: { is: { BMId: { in: BMs } } } }
+  //   : { id: { in: rankingIds } };
 
-    return resultado;
-  }
+  // 3) Busca as contas do ranking (com ou sem filtro de BMs)
+  const contas = await this.prisma.adAccount.findMany({
+    where: whereContas,
+    select: {
+      id: true,
+      nome: true,
+      moeda: true,
+      fusoHorario: true,
+      status: true,
+      saldoMeta: true,
+    },
+  });
+
+  const contasMap = new Map(contas.map((c) => [c.id, c]));
+
+  // 4) Monta resultado apenas para contas que passaram no filtro
+  const resultado = ranking
+    .map((r) => {
+      const conta = contasMap.get(r.contaAnuncioId);
+      if (!conta) {
+        console.warn(`⚠️ [Ranking] Conta não encontrada (fora do filtro/BM): ${r.contaAnuncioId}`);
+        return null;
+      }
+      const out = {
+        id: conta.id,
+        nome: conta.nome,
+        gastoTotal: Number(r._sum.gasto ?? 0), // em REAIS
+        moeda: conta.moeda,
+        fusoHorario: conta.fusoHorario,
+        status: conta.status,
+        saldoMeta: Number(conta.saldoMeta) / 100,
+      };
+      console.log("📦 [Ranking] Resultado individual:", out);
+      return out;
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  return resultado;
+}
+
 
   // Mantendo as chaves originais ("mounth", "tree-mouth")
   async GastosPeriodos(type: PeriodType) {

@@ -1,13 +1,15 @@
 import axios from "axios";
-import { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "../../database";
+import { Decimal } from "@prisma/client/runtime/library";
 
-export async function recalcularGastosDiarios(
-  accessToken1: string,
-  accessToken2: string,
-  endDate?: string
-): Promise<void> {
-  const contas = await prisma.adAccount.findMany();
+export async function recalcularGastosDiarios(endDate?: string): Promise<void> {
+  const contas = await prisma.adAccount.findMany({
+    include: {
+      BM: {
+        include: { token: true },
+      },
+    },
+  });
   const contasComErro: string[] = [];
 
   const today = endDate
@@ -15,15 +17,11 @@ export async function recalcularGastosDiarios(
     : new Date().toISOString().split("T")[0];
 
   for (const conta of contas) {
-    const accountId = conta.id;
-
-    const token =
-      conta.BM === "BM1" ? accessToken1 :
-      conta.BM === "BM2" ? accessToken2 :
-      null;
+    const accountId = conta.id; // ✅ usar account_id do Meta
+    const token = conta.BM?.token?.token;
 
     if (!token) {
-      console.warn(`⚠️ Conta ${accountId} tem BM inválido: ${conta.BM}`);
+      console.warn(`⚠️ Conta ${accountId} ignorada: sem token associado.`);
       continue;
     }
 
@@ -56,21 +54,21 @@ export async function recalcularGastosDiarios(
           const gastoExistente = await prisma.gastoDiario.findUnique({
             where: {
               contaAnuncioId_data: {
-                contaAnuncioId: accountId,
+                contaAnuncioId: conta.id,
                 data: date,
               },
             },
           });
 
           const valorExistente = gastoExistente?.gasto?.toNumber() ?? null;
-
-          const precisaAtualizar = valorExistente === null || valorExistente !== spend;
+          const precisaAtualizar =
+            valorExistente === null || valorExistente !== spend;
 
           if (precisaAtualizar) {
             await prisma.gastoDiario.upsert({
               where: {
                 contaAnuncioId_data: {
-                  contaAnuncioId: accountId,
+                  contaAnuncioId: conta.id,
                   data: date,
                 },
               },
@@ -78,7 +76,7 @@ export async function recalcularGastosDiarios(
                 gasto: spend.toString(),
               },
               create: {
-                contaAnuncioId: accountId,
+                contaAnuncioId: conta.id,
                 data: date,
                 gasto: spend.toString(),
               },
@@ -86,16 +84,22 @@ export async function recalcularGastosDiarios(
 
             if (valorExistente === null) {
               console.log(
-                `🆕 [${accountId}] Gasto do dia ${day.date_start} criado com valor R$ ${spend.toFixed(2)}`
+                `🆕 [${accountId}] Gasto do dia ${day.date_start} criado com valor R$ ${spend.toFixed(
+                  2
+                )}`
               );
             } else {
               console.log(
-                `🔁 [${accountId}] Gasto do dia ${day.date_start} atualizado: R$ ${valorExistente.toFixed(2)} → R$ ${spend.toFixed(2)}`
+                `🔁 [${accountId}] Gasto do dia ${day.date_start} atualizado: R$ ${valorExistente.toFixed(
+                  2
+                )} → R$ ${spend.toFixed(2)}`
               );
             }
           } else {
             console.log(
-              `⏩ [${accountId}] Gasto do dia ${day.date_start} já está atualizado (R$ ${spend.toFixed(2)}). Ignorando.`
+              `⏩ [${accountId}] Gasto do dia ${day.date_start} já está atualizado (R$ ${spend.toFixed(
+                2
+              )}). Ignorando.`
             );
           }
         }
@@ -111,21 +115,16 @@ export async function recalcularGastosDiarios(
       // Atualizar gasto total
       console.log(`📊 Recalculando gasto total da conta ${accountId}...`);
       const totalGasto = await prisma.gastoDiario.aggregate({
-        _sum: {
-          gasto: true,
-        },
-        where: {
-          contaAnuncioId: accountId,
-        },
+        _sum: { gasto: true },
+        where: { contaAnuncioId: conta.id },
       });
 
       const gasto = totalGasto._sum.gasto ?? 0;
-      const total = Math.floor(
-        gasto instanceof Decimal ? gasto.toNumber() : Number(gasto)
-      );
+      const total =
+        gasto instanceof Decimal ? gasto.toNumber() : Number(gasto);
 
       await prisma.adAccount.update({
-        where: { id: accountId },
+        where: { id: conta.id },
         data: { gastoTotal: total },
       });
 

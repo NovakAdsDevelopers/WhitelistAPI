@@ -16,6 +16,7 @@ CREATE TABLE "Usuario" (
     "tipo" "TipoUsuario" NOT NULL DEFAULT 'USUARIO',
     "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizadoEm" TIMESTAMP(3) NOT NULL,
+    "ultimaSincronizacao" TEXT,
 
     CONSTRAINT "Usuario_pkey" PRIMARY KEY ("id")
 );
@@ -28,6 +29,8 @@ CREATE TABLE "Cliente" (
     "saldo" DECIMAL(18,2) NOT NULL DEFAULT 0,
     "depositoTotal" DECIMAL(18,2) NOT NULL DEFAULT 0,
     "gastoTotal" DECIMAL(18,2) NOT NULL DEFAULT 0,
+    "saldoCliente" DECIMAL(18,2) NOT NULL DEFAULT 0,
+    "alocacao" DECIMAL(18,2) NOT NULL DEFAULT 0,
     "cnpj" TEXT NOT NULL,
     "fee" TEXT NOT NULL,
     "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -51,11 +54,30 @@ CREATE TABLE "AdAccount" (
     "realocacao_saida_total" DECIMAL(16,2) NOT NULL DEFAULT 0,
     "alocacao_entrada_total" DECIMAL(16,2) NOT NULL DEFAULT 0,
     "alocacao_saida_total" DECIMAL(16,2) NOT NULL DEFAULT 0,
+    "limiteCritico" TEXT NOT NULL DEFAULT '0',
+    "limiteMedio" TEXT NOT NULL DEFAULT '0',
+    "limiteInicial" TEXT NOT NULL DEFAULT '0',
     "limiteGasto" TEXT NOT NULL DEFAULT '0',
     "saldoMeta" TEXT NOT NULL DEFAULT '0',
-    "ultimaSincronizacao" TEXT NOT NULL,
+    "ultimaSincronizacao" TEXT NOT NULL DEFAULT '0',
+    "ultimoAlertaEnviado" TIMESTAMP(3),
+    "alertaAtivo" BOOLEAN NOT NULL DEFAULT true,
+    "BM" TEXT,
 
     CONSTRAINT "AdAccount_pkey" PRIMARY KEY ("account_id")
+);
+
+-- CreateTable
+CREATE TABLE "AdAccountStatusChange" (
+    "id" BIGSERIAL NOT NULL,
+    "account_id" TEXT NOT NULL,
+    "name" TEXT,
+    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "from_status" INTEGER NOT NULL,
+    "to_status" INTEGER NOT NULL,
+    "value" TEXT,
+
+    CONSTRAINT "AdAccountStatusChange_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -119,6 +141,17 @@ CREATE TABLE "GastoDiario" (
     CONSTRAINT "GastoDiario_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "Token" (
+    "id" SERIAL NOT NULL,
+    "title" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Token_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "Usuario_email_key" ON "Usuario"("email");
 
@@ -139,6 +172,12 @@ CREATE INDEX "GastoDiario_contaAnuncioId_data_idx" ON "GastoDiario"("contaAnunci
 
 -- CreateIndex
 CREATE UNIQUE INDEX "GastoDiario_contaAnuncioId_data_key" ON "GastoDiario"("contaAnuncioId", "data");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Token_title_key" ON "Token"("title");
+
+-- AddForeignKey
+ALTER TABLE "AdAccountStatusChange" ADD CONSTRAINT "AdAccountStatusChange_account_id_fkey" FOREIGN KEY ("account_id") REFERENCES "AdAccount"("account_id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ClienteContaAnuncio" ADD CONSTRAINT "ClienteContaAnuncio_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "Cliente"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

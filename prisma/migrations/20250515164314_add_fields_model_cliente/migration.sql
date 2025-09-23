@@ -1,3 +1,0 @@
--- AlterTable
-ALTER TABLE "Cliente" ADD COLUMN     "alocacao" DECIMAL(18,2) NOT NULL DEFAULT 0,
-ADD COLUMN     "saldoCliente" DECIMAL(18,2) NOT NULL DEFAULT 0;

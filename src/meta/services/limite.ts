@@ -84,8 +84,29 @@ export async function verificarESincronizarAlerta(adAccountId: string) {
 
 export async function autoDisparoAlertas() {
   const agora = new Date();
+
+  // período de 7 dias
+  const gte = new Date();
+  gte.setDate(gte.getDate() - 7);
+
   const adAccounts = await prisma.adAccount.findMany({
-    where: { alertaAtivo: true },
+    where: {
+      alertaAtivo: true,
+      GastoDiario: {
+        some: {
+          data: { gte, lt: agora },
+          gasto: { gt: 0 },
+        },
+      },
+    },
+    select: {
+      id: true,
+      saldoMeta: true,
+      limiteInicial: true,
+      limiteMedio: true,
+      limiteCritico: true,
+      ultimoAlertaEnviado: true,
+    },
   });
 
   console.log(`🔍 Verificando alertas para ${adAccounts.length} contas ativas...`);
@@ -145,6 +166,7 @@ export async function autoDisparoAlertas() {
 
 
 
+
 export async function obterLimitesDinamicos(
   contaAnuncioId: string,
   agora: Date
@@ -178,26 +200,39 @@ export async function obterLimitesDinamicos(
   };
 }
 
-export async function ajusteDiarioLimitesAlerta(token: string, type: "BM1" | "BM2") {
+
+export async function ajusteDiarioLimitesAlerta() {
   const agora = new Date();
-  const accounts = await prisma.adAccount.findMany( {
-    where: {
-      BM: type
-    }
+
+  // 🔍 Buscar todas as adAccounts já com BM e Token
+  const accounts = await prisma.adAccount.findMany({
+    include: {
+      BM: {
+        include: { token: true },
+      },
+    },
   });
 
   console.log(`🔄 Iniciando ajuste diário de ${accounts.length} contas...`);
 
   for (const account of accounts) {
     try {
+      // Pega o token correspondente da BM
+      const token = account.BM?.token?.token;
+      if (!token) {
+        console.warn(`⚠️ Conta ${account.id} não possui BM/Token associado.`);
+        continue;
+      }
+
+      // Calcula gasto diário via API
       const gastoDiario = await getGastoDiario(account.id, token);
-      console.log("📊 Gasto diário atual:", gastoDiario);
+      console.log(`📊 Conta ${account.id} | Gasto diário atual: ${gastoDiario}`);
 
       if (gastoDiario <= 0) {
         await prisma.adAccount.update({
           where: { id: account.id },
           data: {
-            // alertaAtivo: false,
+            alertaAtivo: false,
             limiteCritico: "0",
             limiteMedio: "0",
             limiteInicial: "0",
@@ -207,6 +242,7 @@ export async function ajusteDiarioLimitesAlerta(token: string, type: "BM1" | "BM
         continue;
       }
 
+      // Calcula limites dinamicamente
       const limites = calcularLimitesDinamicos(gastoDiario, agora);
 
       await prisma.adAccount.update({
@@ -227,3 +263,4 @@ export async function ajusteDiarioLimitesAlerta(token: string, type: "BM1" | "BM
 
   console.log("🏁 Ajuste diário de limites concluído.");
 }
+

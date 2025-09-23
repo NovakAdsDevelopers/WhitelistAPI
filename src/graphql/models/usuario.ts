@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { ObjectType, Field, Int, registerEnumType } from "type-graphql";
 import { ContasAnuncio } from "./conta-anuncio";
 import { ContasAnuncioInput } from "../inputs/conta-anuncio";

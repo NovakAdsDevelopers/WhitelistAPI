@@ -1,5 +1,7 @@
+import "reflect-metadata";
 import { buildSchema } from "type-graphql";
 import {
+  BMS,
   ContasAnuncio,
   Cliente,
   ClienteContaAnuncio,
@@ -7,13 +9,15 @@ import {
   ContaLimite,
   ContaTransacao,
   Insights,
+  Integracao,
   GastoDiario,
-  Usuario
+  Usuario,
 } from "./graphql/resolvers";
 
 export const createSchema = async () => {
   return buildSchema({
     resolvers: [
+      BMS,
       Cliente,
       ClienteContaAnuncio,
       ContasAnuncio,
@@ -21,8 +25,9 @@ export const createSchema = async () => {
       ContaLimite,
       ContaTransacao,
       Insights,
+      Integracao,
       GastoDiario,
-      Usuario
+      Usuario,
     ],
   });
 };
