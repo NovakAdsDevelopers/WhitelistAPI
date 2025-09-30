@@ -3,8 +3,9 @@ import { Resolver, Query, Arg } from "type-graphql";
 import { InsightsService } from "../services/insights";
 import {
   GastosPeriodosResponse,
+  PanelInsightsAdAccountResponse,
   PanelInsightsResponse,
-  RankingContasPeriodo
+  RankingContasPeriodo,
 } from "../models/Insights";
 
 @Resolver()
@@ -15,16 +16,29 @@ export class InsightsResolver {
   async GetInsightsPanel(
     @Arg("BMs", () => [String], { nullable: true }) BMs: string[],
     @Arg("startDate", () => String) startDate: string,
-    @Arg("endDate", () => String, { nullable: true }) endDate?: string,
+    @Arg("endDate", () => String, { nullable: true }) endDate?: string
   ) {
-    return this.insightsService.PanelInsights(BMs, startDate, endDate, );
+    return this.insightsService.PanelInsights(BMs, startDate, endDate);
+  }
+
+  @Query(() => PanelInsightsAdAccountResponse)
+  async GetInsightsAdAccount(
+    @Arg("adAccountId", () => String, { nullable: true }) adAccountId: string,
+    @Arg("startDate", () => String) startDate: string,
+    @Arg("endDate", () => String, { nullable: true }) endDate?: string
+  ) {
+    return this.insightsService.AdAccountInsights(
+      adAccountId,
+      startDate,
+      endDate
+    );
   }
 
   @Query(() => [RankingContasPeriodo])
   async GetInsightsPanelRelatorioRanking(
     @Arg("BMs", () => [String], { nullable: true }) BMs: string[],
     @Arg("startDate", () => String) startDate: string,
-    @Arg("endDate", () => String, { nullable: true }) endDate?: string,
+    @Arg("endDate", () => String, { nullable: true }) endDate?: string
   ) {
     return this.insightsService.Ranking(BMs, startDate, endDate);
   }
@@ -32,8 +46,9 @@ export class InsightsResolver {
   // ✅ Novo método para gráfico de linha
   @Query(() => GastosPeriodosResponse)
   async GetInsightsGastosPeriodos(
+    @Arg("adAccountId", () => String, { nullable: true }) adAccountId: string,
     @Arg("type", () => String) type: "week" | "mounth" | "tree-mouth" | "year"
   ): Promise<GastosPeriodosResponse> {
-    return this.insightsService.GastosPeriodos(type);
+    return this.insightsService.GastosPeriodos(type, adAccountId);
   }
 }

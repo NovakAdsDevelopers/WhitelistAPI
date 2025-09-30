@@ -19,6 +19,8 @@ import {
   associateBMsTOAdAccounts,
   createORupdateBMs,
 } from "./meta/services/BusinessManager";
+import { renameAdAccountWithToken } from "./meta/services/Account";
+import { getTokenForAdAccount } from "./meta/services/util";
 
 // Configurações iniciais
 dotenv.config();
@@ -125,6 +127,47 @@ app.post("/sync-bms", async (req, res) => {
   }
 });
 
+app.post("/adaccount/:adAccountId/rename", async (req, res, next) => {
+  try {
+    const adAccountId = String(req.params.adAccountId || "");
+    const newName = String(req.body?.newName || "");
+
+    if (!adAccountId || !newName) {
+      return res
+        .status(400)
+        .json({ error: "Informe adAccountId (na URL) e newName (no corpo)." });
+    }
+
+    // 1) Buscar token via BM associada
+    const token = await getTokenForAdAccount(adAccountId);
+    if (!token) {
+      return res.status(404).json({
+        error: `Conta ${adAccountId} não está associada a nenhuma BM/token.`,
+      });
+    }
+
+    // 2) Renomear (Meta) + atualizar no banco
+    const result = await renameAdAccountWithToken(token, adAccountId, newName);
+
+    // 3) Responder UMA vez (não use res.json dentro de console.log)
+    return res.status(200).json({
+      message: "✅ Ad Account renomeada.",
+      adAccountId,
+      newName,
+      result, // payload retornado pela Graph API (igual ao comportamento anterior)
+    });
+  } catch (error: any) {
+    console.error("❌ Erro ao renomear Ad Account:", error);
+    const msg =
+      error?.response?.data
+        ? `Graph API: ${JSON.stringify(error.response.data)}`
+        : error?.message || "Erro ao renomear.";
+    return res.status(500).json({ error: msg });
+    // Se tiver middleware de erro, poderia ser: next(error)
+  }
+});
+
+
 // Cron para atualizar tokens no primeiro dia do mês às 00:00
 cron.schedule("0 0 1 * *", async () => {
   console.log("🔄 CRON: Atualizando tokens do Meta no início do mês...");
@@ -144,154 +187,97 @@ cron.schedule("0 0 1 * *", async () => {
   }
 });
 
-// CRON: Sincronização de contas a cada 30 minutos
-cron.schedule("*/50 * * * *", async () => {
-  console.log("🔄 CRON: Sincronizando contas de 30 em 30 minutos...");
+ // CRON: Sincronização de contas a cada 30 minutos
+ cron.schedule("*/50 * * * *", async () => {
+   console.log("🔄 CRON: Sincronizando contas de 30 em 30 minutos...");
 
-  try {
-    const tokens = await prisma.token.findMany();
-    console.log(`🔹 Encontrados ${tokens.length} tokens`);
+   try {
+     const tokens = await prisma.token.findMany();
+     console.log(`🔹 Encontrados ${tokens.length} tokens`);
 
-    for (const token of tokens) {
-      console.log(`🔄 Sincronizando contas para: ${token.title}`);
-      await fetchAllAdAccounts(token.token);
-    }
+     for (const token of tokens) {
+       console.log(`🔄 Sincronizando contas para: ${token.title}`);
+       await fetchAllAdAccounts(token.token);
+     }
 
-    registrarExecucao();
-    console.log("✅ Todas as contas foram atualizadas com sucesso");
-  } catch (error) {
-    console.error("❌ CRON erro ao sincronizar contas:", error);
-  }
-});
+     registrarExecucao();
+     console.log("✅ Todas as contas foram atualizadas com sucesso");
+   } catch (error) {
+     console.error("❌ CRON erro ao sincronizar contas:", error);
+   }
+ });
 
-// CRON: Ajuste de alertas a cada 30 minutos
-cron.schedule("*/30 * * * *", async () => {
-  try {
-    console.log("⚠️ CRON: Disparando alertas automáticos...");
-    await autoDisparoAlertas();
-  } catch (error) {
-    console.error("❌ CRON erro ao disparar alertas:", error);
-  }
-});
+ // CRON: Ajuste de alertas a cada 30 minutos
+ cron.schedule("*/30 * * * *", async () => {
+   try {
+     console.log("⚠️ CRON: Disparando alertas automáticos...");
+     await autoDisparoAlertas();
+   } catch (error) {
+     console.error("❌ CRON erro ao disparar alertas:", error);
+   }
+ });
 
-// CRON: Tarefa às 9h para ajustes diários
-cron.schedule("0 9 * * *", async () => {
-  console.log("☀️ CRON: Ajuste de limites diários...");
-  try {
-    await Promise.all([ajusteDiarioLimitesAlerta()]);
-  } catch (error) {
-    console.error("❌ CRON erro no ajuste de limites:", error);
-  }
-});
+ // CRON: Tarefa às 9h para ajustes diários
+ cron.schedule("0 9 * * *", async () => {
+   console.log("☀️ CRON: Ajuste de limites diários...");
+   try {
+     await Promise.all([ajusteDiarioLimitesAlerta()]);
+   } catch (error) {
+     console.error("❌ CRON erro no ajuste de limites:", error);
+   }
+ });
 
 // CRON: Verifica, Cria ou atualiza BMs todo dia 3 à meia-noite
-cron.schedule("0 0 3 * *", async () => {
-  console.log("🕛 Iniciando atualização de BMs no dia 3 à meia-noite...");
+ cron.schedule("0 0 3 * *", async () => {
+   console.log("🕛 Iniciando atualização de BMs no dia 3 à meia-noite...");
 
-  try {
-    const tokensList = await tokens; // sua função que retorna os tokens
+   try {
+     const tokensList = await tokens;  // sua função que retorna os tokens
 
-    for (const token of tokensList) {
-      console.log(`🔹 Token carregado para: ${token.title}`);
-      await createORupdateBMs(token.token, token.id);
-    }
+     for (const token of tokensList) {
+       console.log(`🔹 Token carregado para: ${token.title}`);
+       await createORupdateBMs(token.token, token.id);
+     }
 
-    console.log("✅ Todas as BMs foram atualizadas com sucesso!");
-  } catch (error) {
-    console.error("❌ Erro ao atualizar BMs:", error);
-  }
-});
+     console.log("✅ Todas as BMs foram atualizadas com sucesso!");
+   } catch (error) {
+     console.error("❌ Erro ao atualizar BMs:", error);
+   }
+ });
 
-// CRON: Recalcular gastos diariamente às 0h
-cron.schedule("0 0 * * *", async () => {
-  try {
-    await recalcularGastosDiarios();
-    console.log("📊 CRON: Recalculo de gastos concluído.");
+// // CRON: Recalcular gastos diariamente às 0h
+ cron.schedule("0 0 * * *", async () => {
+   try {
+     await recalcularGastosDiarios();
+     console.log("📊 CRON: Recalculo de gastos concluído.");
 
-    // Busca todas as BMs
-    const allBMs = await prisma.bM.findMany({
-      include: { token: true }, // assumindo que cada BM tem um relacionamento com o token
-    });
+     // Busca todas as BMs
+     const allBMs = await prisma.bM.findMany({
+       include: { token: true }, // assumindo que cada BM tem um relacionamento com o token
+     });
 
-    for (const bm of allBMs) {
-      const BMId = bm.BMId;
-      const token = bm.token?.token; // pega o token associado à BM
+     for (const bm of allBMs) {
+       const BMId = bm.BMId;
+       const token = bm.token?.token; // pega o token associado à BM
 
-      if (!token) {
-        console.warn(`⚠️ BM ${BMId} não possui token associado. Ignorando.`);
-        continue;
-      }
+       if (!token) {
+         console.warn(`⚠️ BM ${BMId} não possui token associado. Ignorando.`);
+         continue;
+       }
 
-      console.log(`🔹 Associando BM ${BMId} com seu token.`);
-      await associateBMsTOAdAccounts(BMId, token);
-    }
-  } catch (error) {
-    console.error("❌ CRON erro ao recalcular gastos:", error);
-  }
-});
+       console.log(`🔹 Associando BM ${BMId} com seu token.`);
+       await associateBMsTOAdAccounts(BMId, token);
+     }
+   } catch (error) {
+     console.error("❌ CRON erro ao recalcular gastos:", error);
+   }
+ });
 
 type NaoAssociadaGlobal = { id: string; name: string; BMId: string };
 
 (async () => {
-  console.log('🚀 Meta API Scheduler iniciada');
-
-  // ⬇️ coletor global fora do laço
-  const naoAssociadasGlobal: NaoAssociadaGlobal[] = [];
-
-  try {
-    // // Busca todas as BMs
-    // const allBMs = await prisma.bM.findMany({
-    //   include: { token: true },
-    // });
-
-    // for (const bm of allBMs) {
-    //   const BMId = bm.BMId;
-    //   const token = bm.token?.token;
-
-    //   if (!token) {
-    //     console.warn(`⚠️ BM ${BMId} não possui token associado. Ignorando.`);
-    //     continue;
-    //   }
-
-    //   console.log(`🔹 Associando BM ${BMId} com seu token.`);
-    //   const { naoAssociadas } = await associateBMsTOAdAccounts(BMId, token);
-
-    //   // acumula no global com a BM de origem
-    //   for (const acc of naoAssociadas) {
-    //     naoAssociadasGlobal.push({ id: acc.id, name: acc.name, BMId });
-    //   }
-    // }
-
-    // // ✅ Deduplicar por id e agregar BMs onde apareceu
-    // const dedupMap = new Map<
-    //   string,
-    //   { id: string; name: string; bmIds: Set<string> }
-    // >();
-
-    // for (const acc of naoAssociadasGlobal) {
-    //   const found = dedupMap.get(acc.id);
-    //   if (found) {
-    //     found.bmIds.add(acc.BMId);
-    //   } else {
-    //     dedupMap.set(acc.id, { id: acc.id, name: acc.name, bmIds: new Set([acc.BMId]) });
-    //   }
-    // }
-
-    // const naoAssociadasUnicas = Array.from(dedupMap.values()).map((x) => ({
-    //   id: x.id,
-    //   name: x.name,
-    //   bms: Array.from(x.bmIds).join(', '), // útil para diagnosticar
-    // }));
-
-    // // 📊 Relatório final
-    // console.log('🏁 FIM — Relatório de contas NÃO associadas');
-    // console.log(`• Total BMs: ${allBMs.length}`);
-    // console.log(`• Não associadas (com duplicatas): ${naoAssociadasGlobal.length}`);
-    // console.log(`• Não associadas (únicas por id): ${naoAssociadasUnicas.length}`);
-    // console.table(naoAssociadasUnicas);
-  } catch (error) {
-    console.error('❌ CRON erro ao recalcular gastos:', error);
-  }
+  console.log("🚀 Meta API Scheduler iniciada");
+  
 })();
 
 export { app as metaSync };

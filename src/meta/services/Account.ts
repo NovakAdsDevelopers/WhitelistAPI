@@ -6,55 +6,114 @@ import axios from "axios";
 import { getLocalDateString, getLocalISOString } from "../../lib/date";
 import { salvarStatusConta } from "./status";
 
-  // Helpers para conversões seguras
-  const toDecimal = (v: any) => {
-    try {
-      // aceita number | string | null | undefined
-      if (v === null || v === undefined || v === "") return new Decimal(0);
-      return new Decimal(v);
-    } catch {
-      return new Decimal(0);
-    }
-  };
+// Helpers para conversões seguras
+const toDecimal = (v: any) => {
+  try {
+    // aceita number | string | null | undefined
+    if (v === null || v === undefined || v === "") return new Decimal(0);
+    return new Decimal(v);
+  } catch {
+    return new Decimal(0);
+  }
+};
 
-  const centsToUnit = (d: Decimal) => d.div(100);
-
+const centsToUnit = (d: Decimal) => d.div(100);
 
 async function atualizarContaExistente(
   account: any,
   existing: any,
-  agora: string,
+  agora: string
 ) {
-
   // Valores em "centavos" conforme API do Facebook
-  const amountSpentCents = account.amount_spent / 100 // ex.: "12345"
-  const spendCapCents = account.spend_cap / 100       // ex.: "200000"
-  const balanceCents = account.balance / 100          // ex.: "-6789"
+  const amount_spent = parseFloat(account?.amount_spent ?? "0");
+  const spend_cap = parseFloat(account?.spend_cap ?? "0");
+  const balanceStr = account?.balance ?? "0";
+  const currency = account?.currency ?? "USD";
 
-  // ✳️ Saldo pré-pago disponível (em unidade monetária):
-  // (spend_cap - amount_spent + balance) / 100
-  const availablePrepaidFunds = (spendCapCents - amountSpentCents + balanceCents);
-   
-  const availablePrepaidFundsUnit = availablePrepaidFunds;
+  console.log(
+    `amount_spent: ${amount_spent}, spend_cap: ${spend_cap}, balance: ${balanceStr}, currency: ${currency}`
+  );
+
+  // Conversão do balance igual ao Python: tenta parsear e divide por 100.0
+  let balance;
+  const parsedBalance = parseFloat(balanceStr);
+  if (Number.isNaN(parsedBalance)) {
+    console.log(`Erro ao converter balance: ${balanceStr}`);
+    balance = 0.0;
+  } else {
+    balance = parsedBalance / 100.0;
+    console.log(`Balance convertido para float: ${balance}`);
+  }
+
+  // Mantido exatamente como no Python:
+  // available_funds em unidade de moeda (dividido por 100 ao final),
+  // somando (spend_cap - amount_spent + balance)
+  const available_funds = (spend_cap - amount_spent + balance) / 100.0;
+  console.log(`available_funds calculado: ${available_funds}`);
 
   // Mantém compatibilidade com os campos existentes
   const gastoAnterior = toDecimal(existing.gastoAPI || "0");
   const gastoAtual = toDecimal(account.amount_spent || "0");
 
   // ✔️ verifica mudança de status
-  const fromStatus: number = existing.status;                           // status anterior (int)
-  const toStatus: number = account.account_status ?? account.status;     // status atual (int)
+  const fromStatus: number = existing.status; // status anterior (int)
+  const toStatus: number = account.account_status ?? account.status; // status atual (int)
 
   if (fromStatus !== toStatus) {
-    await salvarStatusConta(
-      account,
-      fromStatus,
-      {
-        // usa o balance "bruto" em cents para manter o comportamento atual
-        valueOverride: String(account.balance ?? existing.saldoMeta ?? "0"),
-      }
-    );
+    await salvarStatusConta(account, fromStatus, {
+      // usa o balance "bruto" em cents para manter o comportamento atual
+      valueOverride: String(account.balance ?? existing.saldoMeta ?? "0"),
+    });
   }
+
+  // Log amigável para depuração
+  console.log("💳 Cálculo saldo pré-pago disponível:", {
+    account_id: account.account_id,
+    spend_cap_cents: spend_cap,
+    amount_spent_cents: amount_spent,
+    balance_cents: balance,
+    available_prepaid_funds_unit: available_funds,
+    currency: account.currency,
+  });
+
+  await prisma.adAccount.update({
+    where: { id: account.account_id },
+    data: {
+      nome: account.name,
+      status: account.account_status,
+      moeda: account.currency,
+      fusoHorario: account.timezone_name,
+      gastoTotal: gastoAtual, // em cents (Decimal)
+      gastoAPI: account.amount_spent, // raw da API
+      limiteGasto: account.spend_cap, // raw da API (cents)
+      saldoMeta: String(available_funds), // raw da API (cents)
+      ultimaSincronizacao: agora,
+      alertaAtivo: true,
+    },
+  });
+
+  console.log(`✅ Conta ${account.account_id} atualizada.`);
+}
+
+async function criarContaNova(account: any, agora: string) {
+  const limites = await obterLimitesDinamicos(
+    account.account_id,
+    new Date(agora)
+  );
+
+  const centsToUnit = (d: Decimal) => d.div(100);
+
+  // Valores em "centavos" conforme API do Facebook
+  const amountSpentCents = toDecimal(account.amount_spent); // ex.: "12345"
+  const spendCapCents = toDecimal(account.spend_cap); // ex.: "200000"
+  const balanceCents = toDecimal(account.balance); // ex.: "-6789"
+
+  // ✳️ Saldo pré-pago disponível (em unidade monetária):
+  // (spend_cap - amount_spent + balance) / 100
+  const availablePrepaidFunds = spendCapCents
+    .minus(amountSpentCents)
+    .plus(balanceCents);
+  const availablePrepaidFundsUnit = centsToUnit(availablePrepaidFunds);
 
   // Log amigável para depuração
   console.log("💳 Cálculo saldo pré-pago disponível:", {
@@ -66,65 +125,6 @@ async function atualizarContaExistente(
     currency: account.currency,
   });
 
-
-  
-  await prisma.adAccount.update({
-    where: { id: account.account_id },
-    data: {
-      nome: account.name,
-      status: account.account_status,
-      moeda: account.currency,
-      fusoHorario: account.timezone_name,
-      gastoTotal: gastoAtual,                 // em cents (Decimal)
-      gastoAPI: account.amount_spent,        // raw da API
-      limiteGasto: account.spend_cap,        // raw da API (cents)
-      saldoMeta: String(availablePrepaidFundsUnit),            // raw da API (cents)
-      ultimaSincronizacao: agora,
-      alertaAtivo: true
-    },
-  });
-
-  console.log(`✅ Conta ${account.account_id} atualizada.`);
-}
-
-async function criarContaNova(
-  account: any,
-  agora: string,
-) {
- 
-
-  const limites = await obterLimitesDinamicos(
-    account.account_id,
-    new Date(agora)
-  );
-
-const centsToUnit = (d: Decimal) => d.div(100);
-
-  // Valores em "centavos" conforme API do Facebook
-  const amountSpentCents = toDecimal(account.amount_spent); // ex.: "12345"
-  const spendCapCents = toDecimal(account.spend_cap);       // ex.: "200000"
-  const balanceCents = toDecimal(account.balance);          // ex.: "-6789"
-
-  // ✳️ Saldo pré-pago disponível (em unidade monetária):
-  // (spend_cap - amount_spent + balance) / 100
-  const availablePrepaidFunds = spendCapCents
-    .minus(amountSpentCents)
-    .plus(balanceCents);
-  const availablePrepaidFundsUnit = centsToUnit(availablePrepaidFunds);
-
-
-    // Log amigável para depuração
-  console.log("💳 Cálculo saldo pré-pago disponível:", {
-    account_id: account.account_id,
-    spend_cap_cents: spendCapCents.toString(),
-    amount_spent_cents: amountSpentCents.toString(),
-    balance_cents: balanceCents.toString(),
-    available_prepaid_funds_unit: availablePrepaidFundsUnit.toFixed(2),
-    currency: account.currency,
-  });
-
-
-
   await prisma.adAccount.create({
     data: {
       id: account.account_id,
@@ -135,7 +135,7 @@ const centsToUnit = (d: Decimal) => d.div(100);
       gastoTotal: new Decimal(account.amount_spent || "0"),
       gastoAPI: account.amount_spent,
       limiteGasto: account.spend_cap,
-      saldoMeta: String(availablePrepaidFundsUnit), 
+      saldoMeta: String(availablePrepaidFundsUnit),
       ultimaSincronizacao: agora,
       alertaAtivo: true,
       ...limites,
@@ -182,10 +182,7 @@ export async function getGastoDiario(
   }
 }
 
-export async function saveOrUpdateAdAccounts(
-  adAccounts: any[],
-  token: string,
-) {
+export async function saveOrUpdateAdAccounts(adAccounts: any[], token: string) {
   for (const account of adAccounts) {
     try {
       const agora = new Date();
@@ -198,18 +195,14 @@ export async function saveOrUpdateAdAccounts(
       });
 
       if (existingAccount) {
-        await atualizarContaExistente(
-          account,
-          existingAccount,
-          agoraLocalISO,
-        );
+        await atualizarContaExistente(account, existingAccount, agoraLocalISO);
       } else {
         await criarContaNova(account, agoraLocalISO);
       }
 
-      // // Usa apenas a data local (ex: "2025-06-30") como since
-      // const sinceDate = getLocalDateString(agora);
-      // await fetchAdAccountDailySpend(account.account_id, token, sinceDate);
+      // Usa apenas a data local (ex: "2025-06-30") como since
+      const sinceDate = getLocalDateString(agora);
+      await fetchAdAccountDailySpend(account.account_id, token, sinceDate);
 
       await prisma.usuario.updateMany({
         data: { ultimaSincronizacao: agoraLocalISO },
@@ -218,4 +211,29 @@ export async function saveOrUpdateAdAccounts(
       console.error(`❌ Erro ao processar conta ${account.account_id}:`, error);
     }
   }
+}
+
+
+export async function renameAdAccountWithToken(
+  token: string,
+  adAccountId: string,
+  newName: string
+) {
+  const url = `https://graph.facebook.com/v23.0/act_${encodeURIComponent(adAccountId)}`;
+  const params = new URLSearchParams({
+    name: newName,
+    access_token: token,
+  });
+
+  // 1) Renomeia no Meta (se falhar, lança e nada mais acontece)
+  const { data } = await axios.post(url, params);
+
+  // 2) Atualiza no banco
+  await prisma.adAccount.update({
+    where: { id: adAccountId },
+    data: { nome: newName },
+  });
+
+  // 3) Mantém o retorno original (payload do Meta)
+  return data;
 }

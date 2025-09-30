@@ -57,7 +57,7 @@ export async function fetchAllAdAccounts(token: string) {
 }
 
 
-export async function fetchAdAccountsByIds(accountIds: string[]) {
+export async function  fetchAdAccountsByIds(accountIds: string[]) {
   console.log(`🔍 Iniciando sincronização de contas específicas:`, accountIds);
 
   const results: any[] = [];
