@@ -202,7 +202,7 @@ export async function saveOrUpdateAdAccounts(adAccounts: any[], token: string) {
 
       // Usa apenas a data local (ex: "2025-06-30") como since
       const sinceDate = getLocalDateString(agora);
-      await fetchAdAccountDailySpend(account.account_id, token, sinceDate);
+      await fetchAdAccountDailySpend(account.account_id, token);
 
       await prisma.usuario.updateMany({
         data: { ultimaSincronizacao: agoraLocalISO },
