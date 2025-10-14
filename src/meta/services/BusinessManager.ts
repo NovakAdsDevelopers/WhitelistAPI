@@ -56,60 +56,78 @@ export async function createORupdateBMs(token: string, tokenId: number) {
   }
 }
 
-
 export async function associateBMsTOAdAccounts(BMId: string, token: string) {
   // Coletor das contas não associadas (id + name)
   const naoAssociadas: Array<{ id: string; name: string }> = [];
 
+  // Para evitar processar a mesma conta duas vezes (caso esteja em owned e client)
+  const vistos = new Set<string>();
+
   try {
     console.log(`🔹 Buscando Ad Accounts da BM: ${BMId}`);
 
-    let nextUrl: string | null =
-      `https://graph.facebook.com/v23.0/${BMId}/owned_ad_accounts?fields=id,name&access_token=${token}`;
+    // Consultar as duas edges: owned e client
+    const edges = ["owned_ad_accounts", "client_ad_accounts"] as const;
+
     let totalProcessed = 0;
 
-    while (nextUrl) {
-      console.log(`📡 Fazendo requisição para: ${nextUrl}`);
+    for (const edge of edges) {
+      let nextUrl: string | null =
+        `https://graph.facebook.com/v23.0/${BMId}/${edge}?fields=id,name&access_token=${token}`;
 
-      const { data }: any = await axios.get(nextUrl);
-      const adAccounts = data.data ?? [];
+      console.log(`📌 Iniciando varredura da edge: ${edge}`);
 
-      console.log(`🔹 Página retornou ${adAccounts.length} Ad Accounts da BM ${BMId}`);
+      while (nextUrl) {
+        console.log(`📡 Fazendo requisição para: ${nextUrl}`);
 
-      for (const ad of adAccounts) {
-        // Remove o prefixo "act_" caso exista
-        const adAccountId: string = ad.id?.startsWith('act_') ? ad.id.slice(4) : ad.id;
-        const adAccountName: string = ad.name ?? '';
+        const { data }: any = await axios.get(nextUrl);
+        const adAccounts = data.data ?? [];
 
-        console.log(`🔄 Verificando Ad Account: ${adAccountId} (${adAccountName}) no banco`);
+        console.log(`🔹 Página retornou ${adAccounts.length} Ad Accounts (${edge}) para a BM ${BMId}`);
 
-        try {
-          // Atualiza a Ad Account associando à BM se ela existir
-          const updatedAdAccount = await prisma.adAccount.updateMany({
-            where: { id: adAccountId },
-            data: { BMId },
-          });
+        for (const ad of adAccounts) {
+          // Remove o prefixo "act_" caso exista
+          const adAccountId: string = ad.id?.startsWith("act_") ? ad.id.slice(4) : ad.id;
+          const adAccountName: string = ad.name ?? "";
 
-          if (updatedAdAccount.count > 0) {
-            console.log(`✅ Ad Account ${adAccountId} associada à BM ${BMId}`);
-          } else {
-            console.log(`⚠️ Ad Account ${adAccountId} não encontrada no banco. Ignorando.`);
+          // Dedup (não reprocessar mesma conta vinda de outra edge/página)
+          if (vistos.has(adAccountId)) {
+            continue;
+          }
+          vistos.add(adAccountId);
+
+          console.log(`🔄 Verificando Ad Account: ${adAccountId} (${adAccountName}) no banco`);
+
+          try {
+            // Atualiza a Ad Account associando à BM se ela existir
+            const updatedAdAccount = await prisma.adAccount.updateMany({
+              where: { id: adAccountId },
+              data: { BMId },
+            });
+
+            if (updatedAdAccount.count > 0) {
+              console.log(`✅ Ad Account ${adAccountId} associada à BM ${BMId}`);
+            } else {
+              console.log(`⚠️ Ad Account ${adAccountId} não encontrada no banco. Ignorando.`);
+              naoAssociadas.push({ id: adAccountId, name: adAccountName });
+            }
+          } catch (e) {
+            console.error(`❌ Erro ao associar ${adAccountId} (${adAccountName}) → BM ${BMId}:`, e);
             naoAssociadas.push({ id: adAccountId, name: adAccountName });
           }
-        } catch (e) {
-          console.error(`❌ Erro ao associar ${adAccountId} (${adAccountName}) → BM ${BMId}:`, e);
-          naoAssociadas.push({ id: adAccountId, name: adAccountName });
+
+          totalProcessed += 1;
         }
+
+        // Pega próxima página
+        nextUrl = data.paging?.next || null;
       }
 
-      totalProcessed += adAccounts.length;
-
-      // Pega próxima página
-      nextUrl = data.paging?.next || null;
+      console.log(`✅ Concluída a edge ${edge} para BM ${BMId}`);
     }
 
     console.log(
-      `🏁 Associação BM ${BMId} concluída. Total processado: ${totalProcessed}. ` +
+      `🏁 Associação BM ${BMId} concluída. Total processado (deduplicado): ${totalProcessed}. ` +
       `Não associadas: ${naoAssociadas.length}`
     );
 
@@ -123,4 +141,5 @@ export async function associateBMsTOAdAccounts(BMId: string, token: string) {
     throw error;
   }
 }
+
 

@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Length, Matches, IsUrl } from "class-validator";
+import { IsOptional, IsString, Length, Matches, IsUrl, IsDate } from "class-validator";
 import { Field, InputType } from "type-graphql";
 
 @InputType()
@@ -18,14 +18,9 @@ export class IntegracaoCreateInput {
   @Field()
   @IsString({ message: "last_token deve ser uma string" })
   last_token!: string;
-
-  @Field({ nullable: true, defaultValue: "#000000" })
-  @IsOptional()
-  @Matches(/^#([0-9A-Fa-f]{3}){1,2}$/, { message: "Cor deve ser um HEX válido" })
-  cor?: string;
-
+  
   @Field({ nullable: true })
   @IsOptional()
-  @IsUrl({}, { message: "URL da imagem inválida" })
-  img?: string;
+  @IsDate({ message: "spend_date deve ser uma data válida" })
+  spend_date?: Date;
 }

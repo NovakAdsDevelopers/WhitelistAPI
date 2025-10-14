@@ -76,6 +76,9 @@ model AdAccount {
 
   BM   BM?     @relation(fields: [BMId], references: [BMId])
   BMId String?
+
+  // ✅ Relacionamento com PIX
+  pix MetaPix[] @relation("AdAccountToMetaPix")
 }
 
 model AdAccountStatusChange {
@@ -176,6 +179,35 @@ model BM {
 
   AdAccounts AdAccount[]
 }
+
+model MetaPix {
+  id              String   @id @default(cuid())
+  accountId       String
+  bmId            String
+  bmNome          String
+  usuarioId       String
+  usuarioNome     String
+  valor           Decimal  @db.Decimal(16, 2)
+  codigoCopiaCola String   // código "copia e cola" do PIX
+  imageUrl        String   // URL Cloudinary da imagem do QR
+
+  // (opcionais, mas úteis para auditoria/relatórios)
+  tipoRetorno       String?     // p.ex.: "APROVACAO"
+  codigoSolicitacao String?     // id de solicitação retornado pela API
+  dataPagamento     DateTime?   // data do pagamento (se houver)
+  dataOperacao      DateTime?   // data da operação (criação)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // 🔗 Associação com AdAccount
+  conta AdAccount @relation(fields: [accountId], references: [id], name: "AdAccountToMetaPix")
+
+  // Índices/constraints úteis
+  @@index([accountId, createdAt], map: "idx_metapix_account_created")
+  @@unique([codigoCopiaCola], map: "uq_metapix_codigo")
+}
+
 
 model Token {
   id         Int      @id @default(autoincrement())

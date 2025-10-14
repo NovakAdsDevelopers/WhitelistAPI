@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Arg, Int } from "type-graphql";
-import { ContasAnuncio, ContasAnuncioResult } from "../models/conta-anuncio";
+import { ContasAnuncio, ContasAnuncioGastoResult, ContasAnuncioResult } from "../models/conta-anuncio";
 import { ContasAnuncioService } from "../services/conta-anuncio";
 import { ContasAnuncioInput } from "../inputs/conta-anuncio";
 import { Pagination } from "../inputs/Utils";
@@ -24,6 +24,14 @@ export class ContasAnuncioResolver {
     pagination?: Pagination
   ) {
     return this.contasAnuncioService.getAllAccounts(pagination);
+  }
+
+  @Query(() => ContasAnuncioGastoResult)
+  async GetAllContasAnuncioSpends(
+    @Arg("pagination", () => Pagination, { nullable: true })
+    pagination?: Pagination
+  ) {
+    return this.contasAnuncioService.getAllAccountsSpend(pagination);
   }
 
   @Query(() => ContasAnuncio, { nullable: true })

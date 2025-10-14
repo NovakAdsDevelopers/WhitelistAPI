@@ -5,61 +5,63 @@ import getPageInfo from "../../helpers/getPageInfo";
 import { IntegracaoCreateInput } from "../inputs/integracao";
 import { fetchFacebookToken } from "../../meta/services/Token";
 import axios from "axios";
+import { fetchAllAdAccounts } from "../../meta/services/AdAccounts";
+import { createORupdateBMs } from "../../meta/services/BusinessManager";
 
 export class IntegracaoService {
   private prisma = new PrismaClient();
 
-async findAllBMs(){
-  return this.prisma.bM.findMany();
-}
+  async findAllBMs() {
+    return this.prisma.bM.findMany();
+  }
 
- async findAll(pagination?: Pagination, type?: string) {
-  const pagina = Math.max(0, pagination?.pagina ?? 0);
-  const quantidade = Math.min(100, Math.max(1, pagination?.quantidade ?? 10));
+  async findAll(pagination?: Pagination, type?: string) {
+    const pagina = Math.max(0, pagination?.pagina ?? 0);
+    const quantidade = Math.min(100, Math.max(1, pagination?.quantidade ?? 10));
 
-  try {
-    const [rows, dataTotal] = await this.prisma.$transaction([
-      this.prisma.token.findMany({
-        skip: pagina * quantidade,
-        take: quantidade,
-        orderBy: { id: 'asc' },
-        include: {
-          bms: {
-            include: {
-              _count: { select: { AdAccounts: true } }, // <- contador por BM
+    try {
+      const [rows, dataTotal] = await this.prisma.$transaction([
+        this.prisma.token.findMany({
+          skip: pagina * quantidade,
+          take: quantidade,
+          orderBy: { id: "asc" },
+          include: {
+            bms: {
+              include: {
+                _count: { select: { AdAccounts: true } }, // <- contador por BM
+              },
             },
           },
-        },
-      }),
-      this.prisma.token.count(),
-    ]);
+        }),
+        this.prisma.token.count(),
+      ]);
 
-    // mapeia: coloca adaccounts em cada BM e soma total por integração
-    const integracoes = rows.map((it) => {
-      const bms = it.bms.map((bm: any) => ({
-        ...bm,
-        adaccounts: bm._count?.AdAccounts ?? 0,
-      }));
+      // mapeia: coloca adaccounts em cada BM e soma total por integração
+      const integracoes = rows.map((it) => {
+        const bms = it.bms.map((bm: any) => ({
+          ...bm,
+          adaccounts: bm._count?.AdAccounts ?? 0,
+        }));
 
-      const totalAdAccounts = bms.reduce(
-        (acc: number, bm: any) => acc + (bm.adaccounts ?? 0),
-        0
-      );
+        const totalAdAccounts = bms.reduce(
+          (acc: number, bm: any) => acc + (bm.adaccounts ?? 0),
+          0
+        );
 
-      return {
-        ...it,
-        bms,
-        totalAdAccounts, // <- disponível no GraphQL se você adicionou o campo
-      };
-    });
+        return {
+          ...it,
+          bms,
+          totalAdAccounts, // <- disponível no GraphQL se você adicionou o campo
+        };
+      });
 
-    const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
-    return { result: integracoes, pageInfo };
-  } catch (err) {
-    console.error('Erro ao buscar integrações:', err);
-    throw new Error('Erro ao buscar integrações');
+      const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
+      return { result: integracoes, pageInfo };
+    } catch (err) {
+      console.error("Erro ao buscar integrações:", err);
+      throw new Error("Erro ao buscar integrações");
+    }
   }
-}
 
   // async findById(id: number) {
   //   const cliente = await this.prisma.cliente.findUnique({
@@ -114,31 +116,48 @@ async findAllBMs(){
   // }
 
   async create(data: IntegracaoCreateInput) {
- 
+    try {
+      // Troca pelo long-lived token usando o fb_exchange_token
+      const url = new URL(
+        "https://graph.facebook.com/v23.0/oauth/access_token"
+      );
+      url.searchParams.append("grant_type", "fb_exchange_token");
+      url.searchParams.append("client_id", data.client_id);
+      url.searchParams.append("client_secret", data.secret_id);
+      url.searchParams.append("fb_exchange_token", data.last_token);
 
-    // troca pelo long-lived token usando o fb_exchange_token
-    const url =
-      `https://graph.facebook.com/v23.0/oauth/access_token` +
-      `?grant_type=fb_exchange_token` +
-      `&client_id=${data.client_id}` +
-      `&client_secret=${data.secret_id}` +
-      `&fb_exchange_token=${data!.last_token}`;
+      const response = await axios.get(url.toString());
+      const tokenValue = response.data?.access_token;
 
-    const { data: fb } = await axios.get(url);
-    const tokenValue = fb.access_token;
+      if (!tokenValue) {
+        throw new Error("Falha ao obter token do Facebook");
+      }
 
-    // cria o registro gravando o novo token
-    return this.prisma.token.create({
-      data: {
+      // Prepara os dados para salvar no banco
+      const tokenData: any = {
         title: data.title,
         client_id: data.client_id,
         secret_id: data.secret_id,
         last_token: data.last_token,
         token: tokenValue,
-        cor: data.cor ?? "#000000",
-        img: data.img ?? "https://example.com/default-image.png",
-      },
-    });
+      };
+
+      if (data.spend_date) {
+        tokenData.spend_date = data.spend_date;
+      }
+
+      // Cria o registro no banco
+      const integracao = await this.prisma.token.create({ data: tokenData });
+
+      // Processa as integrações relacionadas
+      await fetchAllAdAccounts(integracao.token);
+      await createORupdateBMs(integracao.token, integracao.id);
+
+      return integracao;
+    } catch (error) {
+      console.error("Erro ao criar integração:", error);
+      throw new Error("Erro ao criar integração com o Facebook.");
+    }
   }
 
   // async update(id: number, data: ClienteUpdateInput) {

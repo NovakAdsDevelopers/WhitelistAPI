@@ -3,34 +3,54 @@ import { prisma } from "../../database";
 import axios from "axios";
 import { saveOrUpdateAdAccounts } from "./Account";
 
+const GRAPH_URL = "https://graph.facebook.com/v23.0/me/adaccounts";
+
+type AdAccount = {
+  name: string;
+  account_id: string;
+  account_status: number;
+  currency: string;
+  timezone_name: string;
+  amount_spent?: string;
+  spend_cap?: string;
+  balance?: string;
+};
+
 // Busca contas com paginação
 export async function fetchAllAdAccounts(token: string) {
   console.log("🔄 Iniciando busca de contas de anúncio no Meta API...");
+
+  const baseParams = {
+    access_token: token,
+    fields:
+      "name,account_id,account_status,currency,timezone_name,amount_spent,spend_cap,balance",
+    limit: 25,
+  } as const;
+
+  const seenCursors = new Set<string | null>(); // null para a primeira página
+  let after: string | undefined = undefined;
+  let totalAccounts = 0;
+  let page = 0;
+  const maxPages = 2000; // paraquedas
+
   try {
-    let nextUrl: string | null = `https://graph.facebook.com/v23.0/me/adaccounts`;
-    let totalAccounts = 0;
-    let isFirstPage = true;
+    while (page < maxPages) {
+      page += 1;
 
-    while (nextUrl) {
-      console.log(`📡 Fazendo requisição para: ${nextUrl}`);
+      const params = { ...baseParams, ...(after ? { after } : {}) };
+      console.log(
+        `📡 Página ${page} | GET ${GRAPH_URL} | after=${after ?? "<none>"}`
+      );
 
-      let response;
-
-      if (isFirstPage) {
-        response = await axios.get(nextUrl, {
-          params: {
-            access_token: token,
-            fields:
-              "name,account_id,account_status,currency,timezone_name,amount_spent,spend_cap,balance",
-            limit: 25,
-          },
-        });
-        isFirstPage = false;
-      } else {
-        response = await axios.get(nextUrl);
-      }
-
-      const data: any = response.data;
+      const response = await axios.get(GRAPH_URL, { params, timeout: 30000 });
+      const data: {
+        data?: AdAccount[];
+        error?: { message: string; code: number };
+        paging?: {
+          cursors?: { before?: string; after?: string };
+          next?: string;
+        };
+      } = response.data;
 
       if (data.error) {
         throw new Error(
@@ -38,26 +58,51 @@ export async function fetchAllAdAccounts(token: string) {
         );
       }
 
-      if (Array.isArray(data.data) && data.data.length > 0) {
-        totalAccounts += data.data.length;
-        await saveOrUpdateAdAccounts(data.data, token);
+      const items = Array.isArray(data.data) ? data.data : [];
+      if (items.length > 0) {
+        totalAccounts += items.length;
+        await saveOrUpdateAdAccounts(items, token);
+      } else {
+        console.log("ℹ️ Página vazia recebida — encerrando paginação.");
+        break;
       }
 
-      nextUrl = data.paging?.next || null;
+      const nextAfter = data.paging?.cursors?.after;
+
+      // Se não veio cursor para continuar, acabou.
+      if (!nextAfter) {
+        console.log("🏁 Sem cursor 'after' — última página.");
+        break;
+      }
+
+      // Proteção contra loops: se o mesmo cursor se repetir, paramos.
+      if (seenCursors.has(nextAfter)) {
+        console.warn(
+          `⚠️ Cursor repetido detectado (${nextAfter}) — encerrando para evitar loop.`
+        );
+        break;
+      }
+      seenCursors.add(nextAfter);
+      after = nextAfter;
+    }
+
+    if (page >= maxPages) {
+      console.warn(
+        `⚠️ Atingiu maxPages (${maxPages}). Verifique paginação/cursors.`
+      );
     }
 
     console.log(
       `✅ Sincronização concluída. Total de contas processadas: ${totalAccounts}`
     );
-    return { totalAccounts };
+    return { totalAccounts, pages: page };
   } catch (error) {
     console.error("❌ Erro ao buscar contas de anúncio:", error);
     throw error;
   }
 }
 
-
-export async function  fetchAdAccountsByIds(accountIds: string[]) {
+export async function fetchAdAccountsByIds(accountIds: string[]) {
   console.log(`🔍 Iniciando sincronização de contas específicas:`, accountIds);
 
   const results: any[] = [];
@@ -99,7 +144,10 @@ export async function  fetchAdAccountsByIds(accountIds: string[]) {
       );
       // 3️⃣ Montar resultado
       if (response.data) {
-        console.log(`🔹 Dados recebidos para conta ${accountId}:`, response.data);
+        console.log(
+          `🔹 Dados recebidos para conta ${accountId}:`,
+          response.data
+        );
         results.push({
           ...response.data,
           account_id: accountId,
@@ -136,10 +184,20 @@ export async function fetchAdAccountDailySpend(
 ) {
   console.log("Esse é o valor do since:" + since);
   const today = new Date().toISOString().split("T")[0];
-  const startDate = since
-    ? new Date(since).toISOString().split("T")[0]
-    : "2024-06-01";
+  // Datas base
+  const DEFAULT_DATE = "2024-06-01";
+  const NEWER_DATE = "2025-08-01";
 
+  // Evite deixar o token em claro no código.
+  // Ideal: ler de variável de ambiente (process.env.SPECIAL_TOKEN)
+  const SPECIAL_TOKEN =
+    "EAA693DhICI8BPrq7dGZAbh2TEW3gx0JP26riNlNp9vUFFbXIAoJedQzZAo1R75P0tHlk2yqpjNmvyHFFihMmPpb5mrbKV5o2nxsjjidv6jSjKZBR5LZBdAF59HJhXcr6sKS5H59Uy3Yw8rOirkqGNBhg2euQvYZAcWZCXgWw0PxqqDS6qc64T8m2Cje6LNuKdj0Flq4elSjn1pnYiq4Q4ZD";
+
+  const startDate = since
+    ? new Date(since).toISOString().slice(0, 10)
+    : token === SPECIAL_TOKEN
+    ? NEWER_DATE
+    : DEFAULT_DATE;
   console.log(startDate);
 
   const timeRange = encodeURIComponent(

@@ -66,16 +66,6 @@ async function atualizarContaExistente(
     });
   }
 
-  // Log amigável para depuração
-  console.log("💳 Cálculo saldo pré-pago disponível:", {
-    account_id: account.account_id,
-    spend_cap_cents: spend_cap,
-    amount_spent_cents: amount_spent,
-    balance_cents: balance,
-    available_prepaid_funds_unit: available_funds,
-    currency: account.currency,
-  });
-
   await prisma.adAccount.update({
     where: { id: account.account_id },
     data: {
@@ -202,7 +192,7 @@ export async function saveOrUpdateAdAccounts(adAccounts: any[], token: string) {
 
       // Usa apenas a data local (ex: "2025-06-30") como since
       const sinceDate = getLocalDateString(agora);
-      await fetchAdAccountDailySpend(account.account_id, token, sinceDate);
+      await fetchAdAccountDailySpend(account.account_id, token);
 
       await prisma.usuario.updateMany({
         data: { ultimaSincronizacao: agoraLocalISO },
@@ -213,13 +203,14 @@ export async function saveOrUpdateAdAccounts(adAccounts: any[], token: string) {
   }
 }
 
-
 export async function renameAdAccountWithToken(
   token: string,
   adAccountId: string,
   newName: string
 ) {
-  const url = `https://graph.facebook.com/v23.0/act_${encodeURIComponent(adAccountId)}`;
+  const url = `https://graph.facebook.com/v23.0/act_${encodeURIComponent(
+    adAccountId
+  )}`;
   const params = new URLSearchParams({
     name: newName,
     access_token: token,

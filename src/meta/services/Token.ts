@@ -30,6 +30,7 @@ export async function fetchFacebookToken(
 
     console.log("📥 Resposta da API do Facebook:", data);
 
+    
     const tokenValue = data.access_token;
     const expiresIn = data.expires_in;
     console.log("🔹 Novo token gerado:", tokenValue);

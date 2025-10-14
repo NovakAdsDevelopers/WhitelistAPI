@@ -25,10 +25,11 @@ export class IntegracaoResolver {
   //   return this.integracaoService.findById(id);
   // }
 
-   @Mutation(() => IntegracaoModel)
-   async SetIntegracao(@Arg("data") data: IntegracaoCreateInput) {
-     return this.integracaoService.create(data);
-   }
+  @Mutation(() => IntegracaoModel)
+  async SetIntegracao(@Arg("data") data: IntegracaoCreateInput) {
+    return this.integracaoService.create(data);
+  }
+
 
   // @Mutation(() => Cliente, { nullable: true })
   // async PutCliente(
