@@ -162,6 +162,77 @@ export class ContasAnuncioService {
     return { result, pageInfo };
   }
 
+ async getAllAccountsFunds(adAccountId: string, pagination?: Pagination) {
+  const pagina = pagination?.pagina ?? 0;
+  const quantidade = pagination?.quantidade ?? 10;
+
+  // 0) Buscar o nome da conta uma única vez (pelo id recebido)
+  //    Ajuste o nome do modelo/campo conforme seu schema Prisma (ex.: AdAccount/Account)
+  const account = await prisma.adAccount.findUnique({
+    where: { id: adAccountId },
+    select: { nome: true },
+  });
+
+  // 1) Buscar todos os fundos (MetaPix) associados à conta
+  const pixs = await prisma.metaPix.findMany({
+    skip: pagina * quantidade,
+    take: quantidade,
+    where: {
+      accountId: adAccountId, // busca por conta
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (pixs.length === 0) {
+    throw new Error("Nenhum fundo encontrado para esta conta.");
+  }
+
+  // (Se a janela de ontem não for usada, pode remover este bloco)
+  // const startOfToday = new Date();
+  // startOfToday.setHours(0, 0, 0, 0);
+  // const startOfYesterday = new Date(startOfToday);
+  // startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  // const endOfYesterday = new Date(startOfToday);
+
+  // 3) IDs das transações (MetaPix) da página atual (se precisar)
+  // const pixIds = pixs.map((a) => a.id);
+
+  // 4) Monta retorno no shape esperado
+
+  const result = pixs.map((pix) => ({
+    id: pix.id,
+    accountId: pix.accountId,
+    accountName: account?.nome, // <- preenchido a partir do id da conta
+    bmId: pix.bmId,
+    bmNome: pix.bmNome,
+    imageUrl: pix.imageUrl,
+    codigoCopiaCola: pix.codigoCopiaCola,
+    valor: pix.valor,
+    usuarioId: pix.usuarioId,
+    usuarioNome: pix.usuarioNome,
+    dataPagamento: pix.dataPagamento,
+    dataOperacao: pix.dataOperacao,
+    tipoRetorno: pix.tipoRetorno,
+    codigoSolicitacao: pix.codigoSolicitacao,
+    createdAt: pix.createdAt,
+    updatedAt: pix.updatedAt,
+  }));
+
+  // 5) Paginação total
+  const dataTotal = await prisma.metaPix.count({
+    where: {
+      accountId: adAccountId,
+    },
+  });
+
+  const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
+
+  return { result, pageInfo };
+}
+
+
   async getById(id: string) {
     return await prisma.adAccount.findUnique({ where: { id } });
   }

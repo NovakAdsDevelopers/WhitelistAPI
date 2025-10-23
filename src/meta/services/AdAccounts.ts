@@ -2,6 +2,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "../../database";
 import axios from "axios";
 import { saveOrUpdateAdAccounts } from "./Account";
+import { getLocalDateString } from "../../lib/date";
 
 const GRAPH_URL = "https://graph.facebook.com/v23.0/me/adaccounts";
 
@@ -17,7 +18,7 @@ type AdAccount = {
 };
 
 // Busca contas com paginação
-export async function fetchAllAdAccounts(token: string) {
+export async function fetchAllAdAccounts(token: string, spend_date?: Date) {
   console.log("🔄 Iniciando busca de contas de anúncio no Meta API...");
 
   const baseParams = {
@@ -61,7 +62,7 @@ export async function fetchAllAdAccounts(token: string) {
       const items = Array.isArray(data.data) ? data.data : [];
       if (items.length > 0) {
         totalAccounts += items.length;
-        await saveOrUpdateAdAccounts(items, token);
+        await saveOrUpdateAdAccounts(items, token, spend_date ? getLocalDateString(spend_date) : undefined); 
       } else {
         console.log("ℹ️ Página vazia recebida — encerrando paginação.");
         break;

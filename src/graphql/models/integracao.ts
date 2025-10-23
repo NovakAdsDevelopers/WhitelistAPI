@@ -16,12 +16,6 @@ export class IntegracaoModel {
   @Field(() => String)
   secret_id!: string;
 
-  @Field(() => String)
-  cor?: string;
-
-  @Field(() => String)
-  img?: string;
-
   @Field(() => Number)
   id!: number;
 

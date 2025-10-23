@@ -172,7 +172,11 @@ export async function getGastoDiario(
   }
 }
 
-export async function saveOrUpdateAdAccounts(adAccounts: any[], token: string) {
+export async function saveOrUpdateAdAccounts(
+  adAccounts: any[],
+  token: string,
+  spend_date?: string
+) {
   for (const account of adAccounts) {
     try {
       const agora = new Date();
@@ -192,7 +196,11 @@ export async function saveOrUpdateAdAccounts(adAccounts: any[], token: string) {
 
       // Usa apenas a data local (ex: "2025-06-30") como since
       const sinceDate = getLocalDateString(agora);
-      await fetchAdAccountDailySpend(account.account_id, token);
+      await fetchAdAccountDailySpend(
+        account.account_id,
+        token,
+        spend_date ? spend_date : sinceDate
+      );
 
       await prisma.usuario.updateMany({
         data: { ultimaSincronizacao: agoraLocalISO },

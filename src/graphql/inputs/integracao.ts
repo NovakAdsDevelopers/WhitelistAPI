@@ -19,8 +19,7 @@ export class IntegracaoCreateInput {
   @IsString({ message: "last_token deve ser uma string" })
   last_token!: string;
   
-  @Field({ nullable: true })
-  @IsOptional()
+  @Field()
   @IsDate({ message: "spend_date deve ser uma data válida" })
-  spend_date?: Date;
+  spend_date!: Date;
 }

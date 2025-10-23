@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL_PROD")
+  url      = env("DATABASE_URL")
 }
 
 model Usuario {
@@ -218,10 +218,8 @@ model Token {
   token      String   @unique
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  cor        String?  @default("#000000")
-  img        String?  @default("https://example.com/default-image.png")
   situacao  String?  @default("ATIVO")
-
+  spend_date DateTime?
   // Relação inversa
   bms BM[]
 }

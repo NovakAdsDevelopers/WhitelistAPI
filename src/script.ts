@@ -1,3 +1,4 @@
+import jwt from "jsonwebtoken";
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -5,12 +6,22 @@ import cron from "node-cron";
 
 import { prisma } from "./database";
 import { fetchAllAdAccounts } from "./meta/services/AdAccounts";
-import { associateBMsTOAdAccounts, createORupdateBMs } from "./meta/services/BusinessManager";
+import {
+  associateBMsTOAdAccounts,
+  createORupdateBMs,
+} from "./meta/services/BusinessManager";
 import { getTokenForAdAccount } from "./meta/services/util";
 import { renameAdAccountWithToken } from "./meta/services/Account";
 import { recalcularGastosDiarios } from "./meta/services/gastoDiario";
 import axios from "axios";
-import { getInterToken, pagarPixCopiaECola } from "./inter";
+import {
+  consultarExtratoCompleto,
+  consultarPix,
+  consultarSaldo,
+  getInterToken,
+  pagarPixCopiaECola,
+} from "./inter";
+import { intervaloUltimos6Dias } from "./inter/util";
 
 // ────────────────────────────────────────────────────────────────────────────────
 // ENV & APP
@@ -129,27 +140,95 @@ app.post("/adaccount/:adAccountId/rename", async (req, res) => {
 const VM_URL = "http://52.67.69.212:8080/pix/run";
 
 app.post("/payment-meta", async (req, res) => {
+  const start = Date.now();
+  console.log(
+    "🟢 [payment-meta] Iniciando requisição:",
+    new Date().toISOString()
+  );
+
   try {
+    // 1️⃣ autenticação via cookie
+    const token = req.cookies?.jwt;
+    if (!token) {
+      console.warn("⚠️ [payment-meta] Nenhum cookie JWT encontrado.");
+      return res.status(401).json({ error: "Usuário não autenticado" });
+    }
+
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET!);
+      console.log("✅ [payment-meta] Token decodificado:", decoded);
+    } catch (err) {
+      console.error("❌ [payment-meta] Falha ao validar token:", err);
+      return res.status(401).json({ error: "Token inválido ou expirado" });
+    }
+
+    // 2️⃣ garante que o usuário ainda existe no banco
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, nome: true, email: true, tipo: true },
+    });
+
+    if (!usuario) {
+      console.warn("⚠️ [payment-meta] Usuário não encontrado:", decoded.id);
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    console.log(
+      `👤 [payment-meta] Usuário autenticado: ${usuario.nome} (${usuario.id})`
+    );
+
+    // 3️⃣ valida body
     const {
       business_id,
       asset_id,
       account_id,
-      valor, // mesmo valor usado no FB e no Inter
+      valor,
       retornar_base64 = false,
     } = req.body ?? {};
+    console.log("📦 [payment-meta] Dados recebidos:", {
+      business_id,
+      asset_id,
+      account_id,
+      valor,
+    });
 
     if (!business_id || !asset_id || !account_id || !valor) {
+      console.warn("⚠️ [payment-meta] Campos obrigatórios ausentes:", req.body);
       return res.status(400).json({
         error: "business_id, asset_id, account_id, valor são obrigatórios.",
       });
     }
+
     if (!process.env.INTER_CLIENT_ID || !process.env.INTER_CLIENT_SECRET) {
+      console.error(
+        "❌ [payment-meta] INTER_CLIENT_ID/SECRET ausentes no .env"
+      );
       return res.status(500).json({
         error: "INTER_CLIENT_ID/INTER_CLIENT_SECRET ausentes no .env",
       });
     }
 
-    // 1) chama a VM pra gerar o PIX no Facebook
+    // 4️⃣ busca o nome do BM no banco
+    console.log("🔎 [payment-meta] Buscando nome do BM pelo ID:", business_id);
+
+    const bm = await prisma.bM.findUnique({
+      where: { BMId: business_id }, // ajuste conforme o nome real do campo no seu schema
+      select: { nome: true, BMId: true },
+    });
+
+    if (!bm) {
+      console.warn(
+        `⚠️ [payment-meta] BM com ID ${business_id} não encontrado.`
+      );
+    } else {
+      console.log(`✅ [payment-meta] BM encontrado: ${bm.nome} (${bm.BMId})`);
+    }
+
+    const bmNome = bm?.nome || "BM não encontrado";
+
+    // 5️⃣ chama a VM
+    console.log("➡️ [payment-meta] Chamando VM_URL:", VM_URL);
     const vmResp = await axios.post(
       VM_URL,
       {
@@ -165,40 +244,110 @@ app.post("/payment-meta", async (req, res) => {
       }
     );
 
+    console.log("⬅️ [payment-meta] Resposta da VM:", vmResp.data);
+
     const { success, codigo, image_url } = vmResp.data || {};
     if (!success || !codigo) {
+      console.error("❌ [payment-meta] Falha ao gerar PIX na VM:", vmResp.data);
       return res
         .status(502)
         .json({ error: "Falha ao obter PIX da VM", details: vmResp.data });
     }
 
-    // 2) token Inter (env)
-    const token = await getInterToken({
+    // 7️⃣ token Inter
+    console.log("🔑 [payment-meta] Obtendo token Inter...");
+    const tokenInter = await getInterToken({
       clientId: process.env.INTER_CLIENT_ID!,
       clientSecret: process.env.INTER_CLIENT_SECRET!,
-      scope: undefined, // sua função usa default "pagamento-pix.write"
-      certPath: process.env.CERT_PATH, // se você usa
-      keyPath: process.env.KEY_PATH, // se você usa
-      passphrase: process.env.INTER_KEY_PASSPHRASE,
-    });
-
-    // 3) pagar Pix Copia e Cola usando o CÓDIGO retornado pela VM
-    const pagamento = await pagarPixCopiaECola({
-      token,
-      emv: String(codigo), // << código BR Code da VM
-      valor: valor, // mesmo valor
+      scope: undefined,
       certPath: process.env.CERT_PATH,
       keyPath: process.env.KEY_PATH,
       passphrase: process.env.INTER_KEY_PASSPHRASE,
     });
+    console.log("✅ [payment-meta] Token Inter obtido.");
 
-    // 4) resposta final
+    const accountName = await prisma.adAccount.findUnique({
+      where: { id: account_id },
+      select: { nome: true },
+    });
+
+    // 8️⃣ pagamento PIX
+    console.log("💸 [payment-meta] Iniciando pagamento PIX via Inter...");
+    const pagamento = await pagarPixCopiaECola({
+      token: tokenInter,
+      emv: String(codigo),
+      valor: valor,
+      descricao: `NovakPanel - Operador:${usuario.nome} - Conta:${
+        accountName?.nome || account_id
+      }`,
+      certPath: process.env.CERT_PATH,
+      keyPath: process.env.KEY_PATH,
+      passphrase: process.env.INTER_KEY_PASSPHRASE,
+    });
+    console.log("✅ [payment-meta] Pagamento PIX realizado:", pagamento);
+
+    // 6️⃣ salva o registro
+    console.log("📝 [payment-meta] Salvando registro no banco...");
+
+    try {
+      // opcional: verifica se a conta realmente existe antes
+      const adAccount = await prisma.adAccount.findUnique({
+        where: { id: account_id },
+        select: { id: true, nome: true },
+      });
+
+      if (!adAccount) {
+        console.warn(
+          `⚠️ [payment-meta] AdAccount não encontrada: ${account_id}`
+        );
+        return res.status(404).json({ error: "AdAccount não encontrada." });
+      }
+
+      const nowIsoTime = new Date().toISOString().split("T")[1];
+
+      // monta "YYYY-MM-DDThh:mm:ss.sssZ"
+      const dataPagamentoISO = `${pagamento.dataPagamento}T${nowIsoTime}`;
+      const dataOperacaoISO = `${pagamento.dataOperacao}T${nowIsoTime}`;
+
+      const metaPix = await prisma.metaPix.create({
+        data: {
+          bmId: business_id,
+          bmNome: bmNome,
+          codigoCopiaCola: String(codigo),
+          imageUrl: image_url,
+          valor: Number(valor), // tipo correto para Decimal
+          usuarioId: String(usuario.id),
+          usuarioNome: usuario.nome,
+          accountId: account_id, // ✅ usa apenas o campo direto
+          createdAt: new Date(),
+          tipoRetorno: pagamento.tipoRetorno,
+          codigoSolicitacao: pagamento.codigoSolicitacao,
+          dataPagamento: new Date(dataPagamentoISO),
+          dataOperacao: new Date(dataOperacaoISO),
+        },
+      });
+
+      //BASTA CONVERTER A STRING PARA DATA
+      console.log("✅ [payment-meta] Registro salvo com sucesso:", metaPix.id);
+    } catch (err: any) {
+      console.error("❌ [payment-meta] Erro ao salvar registro:", err);
+      return res.status(500).json({
+        error: "Falha ao salvar registro no banco",
+        details: err.message || String(err),
+      });
+    }
+
+    // 9️⃣ sucesso final
+    const ms = Date.now() - start;
+    console.log(`✅ [payment-meta] Finalizado com sucesso em ${ms}ms.\n`);
+
     return res.status(200).json({
       success: true,
       pix: { codigo, image_url },
       pagamento,
     });
   } catch (err: any) {
+    console.error("💥 [payment-meta] Erro inesperado:", err);
     if (err.response) {
       return res.status(err.response.status).json({
         error: "upstream_error",
@@ -209,6 +358,172 @@ app.post("/payment-meta", async (req, res) => {
     return res.status(500).json({ error: err.message || String(err) });
   }
 });
+
+app.get("/consult-pix/:codigo", async (req, res) => {
+  try {
+    const { codigo } = req.params;
+    if (!codigo) {
+      return res
+        .status(400)
+        .json({ error: "Código da solicitação é obrigatório." });
+    }
+
+    // 1️⃣ Obter token com escopo de leitura
+    const token = await getInterToken({
+      clientId: process.env.INTER_CLIENT_ID!,
+      clientSecret: process.env.INTER_CLIENT_SECRET!,
+      scope: "pagamento-pix.read", // 👈 escopo correto pra consultar
+      passphrase: process.env.INTER_CERT_PASSPHRASE,
+    });
+
+    // 2️⃣ Consultar o PIX na API do Inter
+    const resultado = await consultarPix({
+      token,
+      codigoSolicitacao: codigo,
+    });
+
+    // 3️⃣ Retornar resultado formatado
+    return res.json({
+      status: resultado.status,
+      pago: resultado.pago,
+      valor: resultado.valor,
+      dataHoraMovimento: resultado.dataHoraMovimento,
+      dataHoraSolicitacao: resultado.dataHoraSolicitacao,
+      codigoSolicitacao: resultado.codigoSolicitacao,
+      raw: resultado.raw, // opcional: resposta completa do Inter
+    });
+  } catch (error: any) {
+    console.error("❌ Erro na consulta de PIX:", error);
+    return res
+      .status(500)
+      .json({ error: error?.message || "Erro na consulta de PIX." });
+  }
+});
+
+type TipoOperacao = "C" | "D";
+
+export type TransacaoExtrato = {
+  dataEntrada: string;
+  tipoTransacao?: string;
+  tipoOperacao?: TipoOperacao;
+  valor?: string | number;
+  titulo?: string;
+  descricao?: string;
+};
+
+app.get("/consult-extrato", async (req, res) => {
+  try {
+    const {
+      tipo,
+      tipoTransacao,
+      dataInicio: qDataInicio,
+      dataFim: qDataFim,
+      order: qOrder,
+      pagina: qPagina,
+      tamanhoPagina: qTamanhoPagina,
+    } = req.query as {
+      tipo?: "entrada" | "saida" | "todos";
+      tipoTransacao?: string;
+      dataInicio?: string;
+      dataFim?: string;
+      order?: "asc" | "desc";
+      pagina?: string;
+      tamanhoPagina?: string;
+    };
+
+    // Definir datas padrão (6 dias atrás até hoje)
+    const { dataInicio: defInicio, dataFim: defFim } = intervaloUltimos6Dias();
+    const dataInicio = qDataInicio && qDataInicio.trim() ? qDataInicio : defInicio;
+    const dataFim = qDataFim && qDataFim.trim() ? qDataFim : defFim;
+
+    // Token com escopo correto
+    const token = await getInterToken({
+      clientId: process.env.INTER_CLIENT_ID!,
+      clientSecret: process.env.INTER_CLIENT_SECRET!,
+      scope: "extrato.read",
+      passphrase: process.env.INTER_CERT_PASSPHRASE,
+    });
+
+    // Mapeia tipo para tipoOperacao
+    let tipoOperacao: TipoOperacao | undefined;
+    if (tipo === "entrada") tipoOperacao = "C";
+    else if (tipo === "saida") tipoOperacao = "D";
+
+    // Consulta o extrato completo (enriquecido)
+    const extrato = await consultarExtratoCompleto({
+      token,
+      dataInicio,
+      dataFim,
+      pagina: Number(qPagina ?? 0),
+      tamanhoPagina: Number(qTamanhoPagina ?? 1000),
+      tipoOperacao,
+      tipoTransacao: tipoTransacao?.trim() || undefined,
+    });
+
+    // Normaliza lista
+    let transacoes: TransacaoExtrato[] =
+      extrato.transacoes ?? extrato.movimentacoes ?? [];
+
+    // Ordenação padrão
+    const order = qOrder === "asc" ? "asc" : "desc";
+    transacoes.sort((a, b) => {
+      const da = a.dataEntrada ?? "";
+      const db = b.dataEntrada ?? "";
+      const cmp = db.localeCompare(da);
+      return order === "desc" ? cmp : -cmp;
+    });
+
+    // Retorno final
+    return res.json({
+      periodo: { dataInicio, dataFim },
+      filtros: {
+        tipo: tipo ?? "todos",
+        tipoTransacao: tipoTransacao ?? "todos",
+        order,
+      },
+      pagina: Number(qPagina ?? 0),
+      tamanhoPagina: Number(qTamanhoPagina ?? 1000),
+      totalTransacoes: transacoes.length,
+      transacoes,
+    });
+  } catch (error: any) {
+    console.error("❌ Erro na consulta de extrato completo:", error);
+    return res
+      .status(500)
+      .json({ error: error?.message || "Erro ao consultar extrato completo." });
+  }
+});
+
+
+app.get("/consult-saldo", async (req, res) => {
+  try {
+    const { dataSaldo } = req.query as { dataSaldo?: string };
+
+    // 1) Token com escopo correto
+    const token = await getInterToken({
+      clientId: process.env.INTER_CLIENT_ID!,
+      clientSecret: process.env.INTER_CLIENT_SECRET!,
+      scope: "extrato.read",
+      passphrase: process.env.INTER_CERT_PASSPHRASE,
+    });
+
+    // 2) Consulta de saldo no Inter
+    const saldo = await consultarSaldo({
+      token,
+      dataSaldo, // opcional; se não enviar, pega o saldo atual
+    });
+
+    // 3) Retorna apenas o saldo disponível
+    return res.json({ disponivel: Number(saldo?.disponivel ?? 0) });
+  } catch (error: any) {
+    console.error("❌ Erro na consulta de saldo:", error);
+    return res
+      .status(500)
+      .json({ error: error?.message || "Erro ao consultar saldo." });
+  }
+});
+
+
 
 // ────────────────────────────────────────────────────────────────────────────────
 /** ROTA: Associação das contas de anuncio à BMs */
@@ -252,10 +567,9 @@ app.post("/bms/associate-adaccounts", async (req, res) => {
         results.push({
           BMId,
           ok: false,
-          error:
-            err?.response?.data
-              ? JSON.stringify(err.response.data)
-              : err?.message || String(err),
+          error: err?.response?.data
+            ? JSON.stringify(err.response.data)
+            : err?.message || String(err),
         });
       }
     }
@@ -287,7 +601,9 @@ app.post("/bms/associate-adaccounts/:idIntegracao", async (req, res) => {
     });
 
     if (!token) {
-      return res.status(404).json({ error: "Integração (Token) não encontrada." });
+      return res
+        .status(404)
+        .json({ error: "Integração (Token) não encontrada." });
     }
 
     if (!token.bms || token.bms.length === 0) {
@@ -327,16 +643,16 @@ app.post("/bms/associate-adaccounts/:idIntegracao", async (req, res) => {
         results.push({
           BMId,
           ok: false,
-          error:
-            err?.response?.data
-              ? JSON.stringify(err.response.data)
-              : err?.message || String(err),
+          error: err?.response?.data
+            ? JSON.stringify(err.response.data)
+            : err?.message || String(err),
         });
       }
     }
 
     return res.status(200).json({
-      message: "✅ Associação de Ad Accounts concluída para a integração especificada.",
+      message:
+        "✅ Associação de Ad Accounts concluída para a integração especificada.",
       tokenId,
       totalBMs: token.bms.length,
       results,
@@ -348,8 +664,6 @@ app.post("/bms/associate-adaccounts/:idIntegracao", async (req, res) => {
     });
   }
 });
-
-
 
 // ────────────────────────────────────────────────────────────────────────────────
 // Automações (CRON)

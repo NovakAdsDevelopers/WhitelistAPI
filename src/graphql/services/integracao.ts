@@ -140,6 +140,7 @@ export class IntegracaoService {
         secret_id: data.secret_id,
         last_token: data.last_token,
         token: tokenValue,
+        spend_date: data.spend_date, //
       };
 
       if (data.spend_date) {
@@ -148,9 +149,9 @@ export class IntegracaoService {
 
       // Cria o registro no banco
       const integracao = await this.prisma.token.create({ data: tokenData });
-
+      console.log("Data da integração criada:", data.spend_date);
       // Processa as integrações relacionadas
-      await fetchAllAdAccounts(integracao.token);
+      await fetchAllAdAccounts(integracao.token, data.spend_date);
       await createORupdateBMs(integracao.token, integracao.id);
 
       return integracao;

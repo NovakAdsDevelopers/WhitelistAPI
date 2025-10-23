@@ -3,6 +3,7 @@ import { ContasAnuncio, ContasAnuncioGastoResult, ContasAnuncioResult } from "..
 import { ContasAnuncioService } from "../services/conta-anuncio";
 import { ContasAnuncioInput } from "../inputs/conta-anuncio";
 import { Pagination } from "../inputs/Utils";
+import { MetaPixResult } from "../models/conta-anuncio-pix";
 
 @Resolver(ContasAnuncio)
 export class ContasAnuncioResolver {
@@ -32,6 +33,15 @@ export class ContasAnuncioResolver {
     pagination?: Pagination
   ) {
     return this.contasAnuncioService.getAllAccountsSpend(pagination);
+  }
+
+  @Query(() => MetaPixResult)
+  async GetContaAnuncioFundos(
+    @Arg("account_id", () => String) account_id: string,
+    @Arg("pagination", () => Pagination, { nullable: true })
+    pagination?: Pagination
+  ) {
+    return this.contasAnuncioService.getAllAccountsFunds(account_id, pagination);
   }
 
   @Query(() => ContasAnuncio, { nullable: true })
