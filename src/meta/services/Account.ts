@@ -194,7 +194,7 @@ export async function saveOrUpdateAdAccounts(
         await criarContaNova(account, agoraLocalISO);
       }
 
-      // Usa apenas a data local (ex: "2025-06-30") como since
+      // Usa apenas a data local  como since
       const sinceDate = getLocalDateString(agora);
       await fetchAdAccountDailySpend(
         account.account_id,
