@@ -8,54 +8,58 @@ import { Decimal } from "@prisma/client/runtime/library";
 
 export class ContasAnuncioService {
   async getAll(pagination?: Pagination) {
-  const pagina = pagination?.pagina ?? 0;
-  const quantidade = pagination?.quantidade ?? 10;
+    const pagina = pagination?.pagina ?? 0;
+    const quantidade = pagination?.quantidade ?? 10;
 
-  // Data de 30 dias atrás
-  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-  const thirtyDaysAgo = new Date(Date.now() - THIRTY_DAYS_MS);
+    // Data de 30 dias atrás
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = new Date(Date.now() - THIRTY_DAYS_MS);
 
-  // 1. Buscar os IDs das contas com gastos nos últimos 30 dias
-  const activeAdAccountIdsResult = await prisma.gastoDiario.findMany({
-    where: {
-      data: { gte: thirtyDaysAgo },
-      gasto: { gt: 0 },
-    },
-    select: { contaAnuncioId: true },
-    distinct: ["contaAnuncioId"],
-  });
+    // 1. Buscar os IDs das contas com gastos nos últimos 30 dias
+    const activeAdAccountIdsResult = await prisma.gastoDiario.findMany({
+      where: {
+        data: { gte: thirtyDaysAgo },
+        gasto: { gt: 0 },
+      },
+      select: { contaAnuncioId: true },
+      distinct: ["contaAnuncioId"],
+    });
 
-  const activeAdAccountIds = activeAdAccountIdsResult.map(
-    (item) => item.contaAnuncioId
-  );
+    const activeAdAccountIds = activeAdAccountIdsResult.map(
+      (item) => item.contaAnuncioId
+    );
 
-  if (activeAdAccountIds.length === 0) {
-    throw new Error("Nenhuma conta encontrada com gastos nos últimos 30 dias.");
+    if (activeAdAccountIds.length === 0) {
+      throw new Error(
+        "Nenhuma conta encontrada com gastos nos últimos 30 dias."
+      );
+    }
+
+    // 2. Buscar as contas ativas com paginação + BM associada
+    const adAccounts = await prisma.adAccount.findMany({
+      where: {
+        id: { in: activeAdAccountIds },
+        NOT: {
+          BMId: "782449695464660", // 👈 exclui contas dessa BM
+        },
+      },
+      skip: pagina * quantidade,
+      take: quantidade,
+      include: {
+        BM: true, // ✅ inclui a BM associada
+      },
+    });
+
+    if (adAccounts.length === 0) {
+      throw new Error("Nenhuma conta encontrada para os filtros aplicados.");
+    }
+
+    // 3. Informações de paginação
+    const dataTotal = activeAdAccountIds.length;
+    const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
+
+    return { result: adAccounts, pageInfo };
   }
-
-  // 2. Buscar as contas ativas com paginação + BM associada
-  const adAccounts = await prisma.adAccount.findMany({
-    where: {
-      id: { in: activeAdAccountIds },
-    },
-    skip: pagina * quantidade,
-    take: quantidade,
-    include: {
-      BM: true, // ✅ inclui a BM associada
-    },
-  });
-
-  if (adAccounts.length === 0) {
-    throw new Error("Nenhuma conta encontrada para os filtros aplicados.");
-  }
-
-  // 3. Informações de paginação
-  const dataTotal = activeAdAccountIds.length;
-  const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
-
-  return { result: adAccounts, pageInfo };
-}
-
 
   async getAllAccounts(pagination?: Pagination) {
     const pagina = pagination?.pagina ?? 0;
@@ -162,76 +166,75 @@ export class ContasAnuncioService {
     return { result, pageInfo };
   }
 
- async getAllAccountsFunds(adAccountId: string, pagination?: Pagination) {
-  const pagina = pagination?.pagina ?? 0;
-  const quantidade = pagination?.quantidade ?? 10;
+  async getAllAccountsFunds(adAccountId: string, pagination?: Pagination) {
+    const pagina = pagination?.pagina ?? 0;
+    const quantidade = pagination?.quantidade ?? 10;
 
-  // 0) Buscar o nome da conta uma única vez (pelo id recebido)
-  //    Ajuste o nome do modelo/campo conforme seu schema Prisma (ex.: AdAccount/Account)
-  const account = await prisma.adAccount.findUnique({
-    where: { id: adAccountId },
-    select: { nome: true },
-  });
+    // 0) Buscar o nome da conta uma única vez (pelo id recebido)
+    //    Ajuste o nome do modelo/campo conforme seu schema Prisma (ex.: AdAccount/Account)
+    const account = await prisma.adAccount.findUnique({
+      where: { id: adAccountId },
+      select: { nome: true },
+    });
 
-  // 1) Buscar todos os fundos (MetaPix) associados à conta
-  const pixs = await prisma.metaPix.findMany({
-    skip: pagina * quantidade,
-    take: quantidade,
-    where: {
-      accountId: adAccountId, // busca por conta
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+    // 1) Buscar todos os fundos (MetaPix) associados à conta
+    const pixs = await prisma.metaPix.findMany({
+      skip: pagina * quantidade,
+      take: quantidade,
+      where: {
+        accountId: adAccountId, // busca por conta
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
-  if (pixs.length === 0) {
-    throw new Error("Nenhum fundo encontrado para esta conta.");
+    if (pixs.length === 0) {
+      throw new Error("Nenhum fundo encontrado para esta conta.");
+    }
+
+    // (Se a janela de ontem não for usada, pode remover este bloco)
+    // const startOfToday = new Date();
+    // startOfToday.setHours(0, 0, 0, 0);
+    // const startOfYesterday = new Date(startOfToday);
+    // startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    // const endOfYesterday = new Date(startOfToday);
+
+    // 3) IDs das transações (MetaPix) da página atual (se precisar)
+    // const pixIds = pixs.map((a) => a.id);
+
+    // 4) Monta retorno no shape esperado
+
+    const result = pixs.map((pix) => ({
+      id: pix.id,
+      accountId: pix.accountId,
+      accountName: account?.nome, // <- preenchido a partir do id da conta
+      bmId: pix.bmId,
+      bmNome: pix.bmNome,
+      imageUrl: pix.imageUrl,
+      codigoCopiaCola: pix.codigoCopiaCola,
+      valor: pix.valor,
+      usuarioId: pix.usuarioId,
+      usuarioNome: pix.usuarioNome,
+      dataPagamento: pix.dataPagamento,
+      dataOperacao: pix.dataOperacao,
+      tipoRetorno: pix.tipoRetorno,
+      codigoSolicitacao: pix.codigoSolicitacao,
+      createdAt: pix.createdAt,
+      updatedAt: pix.updatedAt,
+    }));
+
+    // 5) Paginação total
+    const dataTotal = await prisma.metaPix.count({
+      where: {
+        accountId: adAccountId,
+      },
+    });
+
+    const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
+
+    return { result, pageInfo };
   }
-
-  // (Se a janela de ontem não for usada, pode remover este bloco)
-  // const startOfToday = new Date();
-  // startOfToday.setHours(0, 0, 0, 0);
-  // const startOfYesterday = new Date(startOfToday);
-  // startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-  // const endOfYesterday = new Date(startOfToday);
-
-  // 3) IDs das transações (MetaPix) da página atual (se precisar)
-  // const pixIds = pixs.map((a) => a.id);
-
-  // 4) Monta retorno no shape esperado
-
-  const result = pixs.map((pix) => ({
-    id: pix.id,
-    accountId: pix.accountId,
-    accountName: account?.nome, // <- preenchido a partir do id da conta
-    bmId: pix.bmId,
-    bmNome: pix.bmNome,
-    imageUrl: pix.imageUrl,
-    codigoCopiaCola: pix.codigoCopiaCola,
-    valor: pix.valor,
-    usuarioId: pix.usuarioId,
-    usuarioNome: pix.usuarioNome,
-    dataPagamento: pix.dataPagamento,
-    dataOperacao: pix.dataOperacao,
-    tipoRetorno: pix.tipoRetorno,
-    codigoSolicitacao: pix.codigoSolicitacao,
-    createdAt: pix.createdAt,
-    updatedAt: pix.updatedAt,
-  }));
-
-  // 5) Paginação total
-  const dataTotal = await prisma.metaPix.count({
-    where: {
-      accountId: adAccountId,
-    },
-  });
-
-  const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
-
-  return { result, pageInfo };
-}
-
 
   async getById(id: string) {
     return await prisma.adAccount.findUnique({ where: { id } });
