@@ -1,9 +1,7 @@
 import { PrismaClient, Cliente } from "@prisma/client";
-import { ClienteCreateInput, ClienteUpdateInput } from "../inputs/cliente";
 import { Pagination } from "../inputs/Utils";
 import getPageInfo from "../../helpers/getPageInfo";
 import { IntegracaoCreateInput } from "../inputs/integracao";
-import { fetchFacebookToken } from "../../meta/services/Token";
 import axios from "axios";
 import { fetchAllAdAccounts } from "../../meta/services/AdAccounts";
 import { createORupdateBMs } from "../../meta/services/BusinessManager";

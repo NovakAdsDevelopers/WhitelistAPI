@@ -12,7 +12,6 @@ import {
 } from "./meta/services/BusinessManager";
 import { getTokenForAdAccount } from "./meta/services/util";
 import { renameAdAccountWithToken } from "./meta/services/Account";
-import { recalcularGastosDiarios } from "./meta/services/gastoDiario";
 import axios from "axios";
 import {
   consultarExtratoCompleto,
@@ -23,6 +22,7 @@ import {
 } from "./inter";
 import { intervaloUltimos6Dias } from "./inter/util";
 import { startCronJobs } from "./cronJobs";
+import { fetchFacebookToken } from "./meta/services/Token";
 
 // ────────────────────────────────────────────────────────────────────────────────
 // ENV & APP
@@ -46,30 +46,89 @@ const tokens = prisma.token.findMany();
 // ────────────────────────────────────────────────────────────────────────────────
 /** ROTA: Sincronização geral (manual) */
 // ────────────────────────────────────────────────────────────────────────────────
-app.get("/sync-ads", async (req, res) => {
+app.get("/sync-ads/:date?", async (req, res) => {
   try {
     console.log("🔄 Sincronização geral iniciada");
 
+    // 1) Data: path param tem prioridade; fallback para ?date=
+    const dateStr = (req.params.date ?? req.query.date)?.toString();
+
+    // 2) Validação simples (YYYY-MM-DD) e conversão
+    let date: Date | undefined;
+    if (dateStr) {
+      const isoDay = /^\d{4}-\d{2}-\d{2}$/;
+      if (!isoDay.test(dateStr)) {
+        return res
+          .status(400)
+          .json({ error: 'Parâmetro "date" inválido. Use YYYY-MM-DD.' });
+      }
+      const [y, m, d] = dateStr.split("-").map(Number);
+      // Início do dia (ajuste para UTC se preferir)
+      date = new Date(y, m - 1, d, 0, 0, 0, 0);
+      console.log(`📅 Data alvo: ${dateStr}`);
+    }
+
+    // 3) Busca tokens
     const tokens = await prisma.token.findMany();
     console.log(`🔹 Encontrados ${tokens.length} tokens`);
 
-    const results: Record<string, any> = {};
-
+    // 4) Sincroniza cada token, repassando a data (opcional)
+    const results: Record<string, unknown> = {};
     for (const token of tokens) {
       console.log(`🔄 Sincronizando contas para: ${token.title}`);
-      results[token.title] = await fetchAllAdAccounts(token.token);
+      results[token.title] = await fetchAllAdAccounts(token.token, date);
     }
 
     console.log("✅ Sincronização concluída.");
     return res.status(200).json({
       message: "✅ Sincronização concluída.",
+      date: dateStr ?? null,
       result: results,
     });
   } catch (error: any) {
     console.error("❌ Erro na sincronização:", error);
     return res
       .status(500)
-      .json({ error: error.message || "Erro na sincronização." });
+      .json({ error: error.message ?? "Erro na sincronização." });
+  }
+});
+
+app.get("/update-tokens", async (req, res) => {
+  console.log("🔄 ROTA: Atualizando tokens do Meta sob demanda...");
+
+  try {
+    const tokensDb = await prisma.token.findMany();
+    console.log(`🔹 Encontrados ${tokensDb.length} tokens`);
+
+    const results: Record<string, string> = {};
+
+    for (const token of tokensDb) {
+      try {
+        console.log(`🔄 Renovando token para: ${token.title}`);
+
+        await fetchFacebookToken(
+          token.client_id,
+          token.secret_id,
+          token.title
+        );
+
+        results[token.title] = "✅ Token atualizado com sucesso";
+      } catch (innerError: any) {
+        console.error(`❌ Erro ao renovar token de ${token.title}:`, innerError);
+        results[token.title] = `❌ Falha ao atualizar: ${innerError.message || "erro desconhecido"}`;
+      }
+    }
+
+    console.log("✅ Todos os tokens processados.");
+    return res.status(200).json({
+      message: "✅ Atualização manual de tokens concluída.",
+      results,
+    });
+  } catch (error: any) {
+    console.error("❌ Erro geral ao atualizar tokens:", error);
+    return res.status(500).json({
+      error: error.message || "Erro ao atualizar tokens do Meta.",
+    });
   }
 });
 
@@ -434,7 +493,8 @@ app.get("/consult-extrato", async (req, res) => {
 
     // Definir datas padrão (6 dias atrás até hoje)
     const { dataInicio: defInicio, dataFim: defFim } = intervaloUltimos6Dias();
-    const dataInicio = qDataInicio && qDataInicio.trim() ? qDataInicio : defInicio;
+    const dataInicio =
+      qDataInicio && qDataInicio.trim() ? qDataInicio : defInicio;
     const dataFim = qDataFim && qDataFim.trim() ? qDataFim : defFim;
 
     // Token com escopo correto
@@ -495,7 +555,6 @@ app.get("/consult-extrato", async (req, res) => {
   }
 });
 
-
 app.get("/consult-saldo", async (req, res) => {
   try {
     const { dataSaldo } = req.query as { dataSaldo?: string };
@@ -523,8 +582,6 @@ app.get("/consult-saldo", async (req, res) => {
       .json({ error: error?.message || "Erro ao consultar saldo." });
   }
 });
-
-
 
 // ────────────────────────────────────────────────────────────────────────────────
 /** ROTA: Associação das contas de anuncio à BMs */
@@ -665,7 +722,6 @@ app.post("/bms/associate-adaccounts/:idIntegracao", async (req, res) => {
     });
   }
 });
-
 
 // ────────────────────────────────────────────────────────────────────────────────
 // STARTUP

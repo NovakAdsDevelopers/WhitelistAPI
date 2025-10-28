@@ -6,17 +6,16 @@ import {
   createORupdateBMs,
 } from "./meta/services/BusinessManager";
 import { recalcularGastosDiarios } from "./meta/services/gastoDiario";
-import { saveOrUpdateAdAccounts } from "./meta/services/Account";
 import { fetchAllAdAccounts } from "./meta/services/AdAccounts";
+import { fetchFacebookToken } from "./meta/services/Token";
 
 // Se você tiver funções auxiliares importadas de outros módulos
 // como "autoDisparoAlertas" ou "ajusteDiarioLimitesAlerta", importe-as aqui.
 let isSyncRunning = false;
+const TZ = "America/Sao_Paulo";
 
 export function startCronJobs() {
-
   console.log("🕓 Iniciando automações CRON...");
-
 
   // CRON: Atualizações de gasto de contas a cada 30 minutos
   cron.schedule("*/30 * * * *", async () => {
@@ -78,6 +77,36 @@ export function startCronJobs() {
   //     console.error("❌ CRON erro no ajuste de limites:", error);
   //   }
   // });
+
+  // 1) Atualizar tokens no dia 1 às 00:00
+  cron.schedule(
+    "0 0 1 * *",
+    async () => {
+      console.log("🔄 CRON: Atualizando tokens do Meta no início do mês...");
+      try {
+        // Se você já usa prisma.token.findMany():
+        const tokensDb = await prisma.token.findMany(); // ou use deps.fetchTokensFromPrisma?.()
+        console.log(`🔹 Encontrados ${tokensDb.length} tokens`);
+
+        for (const token of tokensDb) {
+          console.log(`🔄 Renovando token para: ${token.title}`);
+          // Ajuste parâmetros conforme sua função
+          await fetchFacebookToken(
+            token.client_id,
+            token.secret_id,
+            token.title
+          );
+        }
+
+        console.log(
+          "✅ Todos os tokens atualizados com sucesso no início do mês"
+        );
+      } catch (error) {
+        console.error("❌ CRON erro ao atualizar tokens do Meta:", error);
+      }
+    },
+    { timezone: TZ }
+  );
 
   // CRON: Verifica, cria ou atualiza BMs todo dia 3 à meia-noite
   cron.schedule("0 0 3 * *", async () => {
