@@ -41,7 +41,6 @@ export class UsuarioResolver {
 
   // 🔐 Autenticado (qualquer tipo)
   @Mutation(() => Usuario)
-  @UseMiddleware(AuthMiddleware)
   async SetUsuario(@Arg("data") data: UsuarioInput, @Ctx() _ctx: MyContext) {
     return this.usuarioService.create(data);
   }
