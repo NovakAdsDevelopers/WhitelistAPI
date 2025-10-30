@@ -121,9 +121,14 @@ export class UsuarioService {
       }
 
       const token = jwt.sign(
-        { id: usuario.id, email: usuario.email, nome: usuario.nome, tipo: usuario.tipo },
+        {
+          id: usuario.id,
+          email: usuario.email,
+          nome: usuario.nome,
+          tipo: usuario.tipo,
+        },
         SECRET_KEY,
-        { expiresIn: "1h" }
+        { expiresIn: "1m" } // 🔥 expira em 1 minuto
       );
 
       return { token }; // Retornando um objeto com a chave "token"
