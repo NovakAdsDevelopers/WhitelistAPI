@@ -1,4 +1,12 @@
-import { Resolver, Query, Mutation, Arg, ID, Int } from "type-graphql";
+import {
+  Resolver,
+  Query,
+  Mutation,
+  Arg,
+  ID,
+  Int,
+  UseMiddleware,
+} from "type-graphql";
 import { ClienteCreateInput, ClienteUpdateInput } from "../inputs/cliente";
 import { Cliente } from "../models/cliente";
 import { Pagination } from "../inputs/Utils";
@@ -6,15 +14,16 @@ import { IntegracaoService } from "../services/integracao";
 import { IntegracaoModel, IntegracaoResult } from "../models/integracao";
 import { IntegracaoCreateInput } from "../inputs/integracao";
 import { BMs } from "../models/bm";
+import { AuthMiddleware } from "../../middlewares/AuthMiddleware";
+import { RequireRole } from "../../middlewares/RoleMiddleware";
 
 @Resolver()
 export class BusinessManagerResolver {
   private integracaoService = new IntegracaoService();
 
-
- @Query(() => [BMs])
-  async GetBMs(
-  ) {
+  @Query(() => [BMs])
+  @UseMiddleware(AuthMiddleware)
+  async GetBMs() {
     return this.integracaoService.findAllBMs();
   }
 
@@ -33,10 +42,11 @@ export class BusinessManagerResolver {
   //   return this.integracaoService.findById(id);
   // }
 
-   @Mutation(() => IntegracaoModel)
-   async SetIntegracao(@Arg("data") data: IntegracaoCreateInput) {
-     return this.integracaoService.create(data);
-   }
+  @Mutation(() => IntegracaoModel)
+  @UseMiddleware(AuthMiddleware, RequireRole("ADMIN"))
+  async SetIntegracao(@Arg("data") data: IntegracaoCreateInput) {
+    return this.integracaoService.create(data);
+  }
 
   // @Mutation(() => Cliente, { nullable: true })
   // async PutCliente(

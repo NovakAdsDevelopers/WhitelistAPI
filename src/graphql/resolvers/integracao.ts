@@ -1,16 +1,26 @@
-import { Resolver, Query, Mutation, Arg, ID, Int } from "type-graphql";
+import {
+  Resolver,
+  Query,
+  Mutation,
+  Arg,
+  ID,
+  Int,
+  UseMiddleware,
+} from "type-graphql";
 import { ClienteCreateInput, ClienteUpdateInput } from "../inputs/cliente";
 import { Cliente } from "../models/cliente";
 import { Pagination } from "../inputs/Utils";
 import { IntegracaoService } from "../services/integracao";
 import { IntegracaoModel, IntegracaoResult } from "../models/integracao";
 import { IntegracaoCreateInput } from "../inputs/integracao";
+import { AuthMiddleware } from "../../middlewares/AuthMiddleware";
 
 @Resolver()
 export class IntegracaoResolver {
   private integracaoService = new IntegracaoService();
 
   @Query(() => IntegracaoResult)
+  @UseMiddleware(AuthMiddleware)
   async GetIntegracoes(
     @Arg("pagination", () => Pagination, { nullable: true })
     pagination?: Pagination,
@@ -26,10 +36,10 @@ export class IntegracaoResolver {
   // }
 
   @Mutation(() => IntegracaoModel)
+  @UseMiddleware(AuthMiddleware)
   async SetIntegracao(@Arg("data") data: IntegracaoCreateInput) {
     return this.integracaoService.create(data);
   }
-
 
   // @Mutation(() => Cliente, { nullable: true })
   // async PutCliente(

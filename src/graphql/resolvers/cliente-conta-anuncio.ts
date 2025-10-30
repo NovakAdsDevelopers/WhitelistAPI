@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Arg } from "type-graphql";
+import { Resolver, Query, Mutation, Arg, UseMiddleware } from "type-graphql";
 import { Pagination } from "../inputs/Utils";
 import {
   ClienteContaAnuncioCreateManyInput,
@@ -13,12 +13,14 @@ import {
   SetClienteContaAnuncioResponse,
   SetTransacaoClienteContaAnuncioResponse,
 } from "../models/cliente-conta-anuncio";
+import { AuthMiddleware } from "../../middlewares/AuthMiddleware";
 
 @Resolver()
 export class ClienteContaAnuncioResolver {
   private service = new ClienteContaAnuncioService();
 
   @Query(() => ClienteContaAnuncioResult)
+  @UseMiddleware(AuthMiddleware)
   async GetContasAssociadasPorCliente(
     @Arg("clienteId") clienteId: number,
     @Arg("pagination", () => Pagination, { nullable: true })
@@ -28,13 +30,13 @@ export class ClienteContaAnuncioResolver {
   }
 
   @Query(() => ClienteContaAnuncio)
-  async GetContaAssociadaCliente(
-    @Arg("clienteId") clienteId: number,
-  ) {
+  @UseMiddleware(AuthMiddleware)
+  async GetContaAssociadaCliente(@Arg("clienteId") clienteId: number) {
     return this.service.findByAssociacaoId(clienteId);
   }
 
   @Mutation(() => SetClienteContaAnuncioResponse)
+  @UseMiddleware(AuthMiddleware)
   async SetClienteContaAnuncio(
     @Arg("data") data: ClienteContaAnuncioCreateManyInput
   ) {
@@ -42,6 +44,7 @@ export class ClienteContaAnuncioResolver {
   }
 
   @Mutation(() => PutClienteContaAnuncioResponse)
+  @UseMiddleware(AuthMiddleware)
   async PutClienteContaAnuncio(
     @Arg("data") data: ClienteContaAnuncioUpdateInput
   ) {
@@ -49,6 +52,7 @@ export class ClienteContaAnuncioResolver {
   }
 
   @Mutation(() => SetTransacaoClienteContaAnuncioResponse)
+  @UseMiddleware(AuthMiddleware)
   async SetTransacaoClienteContaAnuncio(
     @Arg("data") data: TransacaoClienteContaAnuncioInput
   ) {

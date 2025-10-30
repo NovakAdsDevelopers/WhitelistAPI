@@ -6,6 +6,23 @@ import { Pagination } from "../inputs/Utils";
 import getPageInfo from "../../helpers/getPageInfo";
 import { Decimal } from "@prisma/client/runtime/library";
 
+// Toggle de logs
+const DEBUG = true;
+
+// util: log condicionado
+function dlog(...args: any[]) {
+  if (DEBUG) console.log("[getAllAccountsSpend]", ...args);
+}
+
+// util: serialização segura
+function safeJSON(value: any) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 export class ContasAnuncioService {
   async getAll(pagination?: Pagination) {
     const pagina = pagination?.pagina ?? 0;
@@ -91,78 +108,80 @@ export class ContasAnuncioService {
     const pagina = pagination?.pagina ?? 0;
     const quantidade = pagination?.quantidade ?? 10;
 
-    // 1) Buscar contas + BM
+    const BM_TARGET = "782449695464660";
+    console.log("🚀 Iniciando getAllAccountsSpend para BM", BM_TARGET);
+
+    // 1️⃣ Buscar contas vinculadas à BM
     const adAccounts = await prisma.adAccount.findMany({
       skip: pagina * quantidade,
       take: quantidade,
       include: { BM: true },
-      where: {
-        BMId: "782449695464660",
-      },
+      where: { BMId: BM_TARGET },
     });
 
     if (adAccounts.length === 0) {
-      throw new Error("Nenhuma conta encontrada.");
+      throw new Error("Nenhuma conta encontrada para esta BM.");
     }
 
-    // 2) Janela de ONTEM (00:00 -> hoje 00:00) no timezone do servidor
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    // 2️⃣ Calcular o dia de ontem (sem hora)
+    const hoje = new Date();
+    const ontem = new Date(hoje);
+    ontem.setDate(hoje.getDate() - 1);
 
-    const startOfYesterday = new Date(startOfToday);
-    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    const diaOntem = ontem.toISOString().split("T")[0]; // ex: '2025-10-27'
+    console.log("📅 Dia alvo (ontem):", diaOntem);
 
-    const endOfYesterday = new Date(startOfToday); // exclusivo
-
-    // 3) IDs das contas da página atual
-    const accountIds = adAccounts.map((a) => a.id);
-
-    // 4) Somatório de gasto de ONTEM por conta (modelo GastoDiario)
-    const gastos = await prisma.gastoDiario.groupBy({
-      by: ["contaAnuncioId"],
+    // 3️⃣ Buscar todos os gastos do dia anterior de uma vez só
+    const gastos = await prisma.gastoDiario.findMany({
       where: {
-        contaAnuncioId: { in: accountIds },
-        data: { gte: startOfYesterday, lt: endOfYesterday },
+        data: {
+          gte: new Date(`${diaOntem}T00:00:00.000Z`),
+          lt: new Date(`${diaOntem}T23:59:59.999Z`),
+        },
       },
-      _sum: { gasto: true }, // Decimal(18,2)
     });
 
-    // 5) Map: conta -> gasto (centavos em string)
+    console.log("🧾 Registros de gastoDiario retornados:", gastos.length);
+
+    // 4️⃣ Mapear gasto por conta
     const gastoPorConta = new Map<string, string>();
     for (const g of gastos) {
-      // g._sum.gasto é Decimal | null
-      const soma = g._sum.gasto ?? new Decimal(0);
-      // converte para centavos, sem perder precisão, e retorna string
-      const cents = soma.mul(100).toFixed(0);
-      gastoPorConta.set(String(g.contaAnuncioId), cents);
+      const soma = g.gasto ?? new Decimal(0);
+      gastoPorConta.set(String(g.contaAnuncioId), soma.mul(100).toFixed(0)); // centavos
     }
 
-    // 6) Monta retorno EXATAMENTE no shape de ContasAnuncioGasto
-    const result = adAccounts.map((acc) => ({
-      id: acc.id,
-      nome: acc.nome,
-      status: acc.status,
-      moeda: acc.moeda,
-      fusoHorario: acc.fusoHorario,
+    // 5️⃣ Montar resultado
+    const result = adAccounts.map((acc) => {
+      const gasto = gastoPorConta.get(String(acc.id)) ?? "0";
+      console.log(`💰 Conta ${acc.id} (${acc.nome}) → Gasto diário: ${gasto}`);
+      return {
+        id: acc.id,
+        nome: acc.nome,
+        status: acc.status,
+        moeda: acc.moeda,
+        fusoHorario: acc.fusoHorario,
+        gastoDiario: gasto,
+        limiteGasto: acc.limiteGasto,
+        saldoMeta: acc.saldoMeta,
+        saldo: acc.saldo,
+        depositoTotal: acc.depositoTotal,
+        ultimaSincronizacao: acc.ultimaSincronizacao,
+        BMId: acc.BM?.id ?? acc.BMId ?? "",
+      };
+    });
 
-      // único campo de gasto:
-      gastoDiario: gastoPorConta.get(String(acc.id)) ?? "0", // string em centavos
-
-      // demais campos do tipo:
-      limiteGasto: acc.limiteGasto,
-      saldoMeta: acc.saldoMeta,
-      saldo: acc.saldo,
-      depositoTotal: acc.depositoTotal,
-      ultimaSincronizacao: acc.ultimaSincronizacao,
-
-      // cuidado: se o campo for não-nulo no GraphQL, garanta valor
-      BMId: acc.BM?.id ?? acc.BMId ?? "", // ou filtre contas sem BM
-    }));
-
-    // 7) Paginação total
-    const dataTotal = await prisma.adAccount.count();
+    // 6️⃣ Paginação total
+    const dataTotal = await prisma.adAccount.count({
+      where: { BMId: BM_TARGET },
+    });
     const pageInfo = getPageInfo(dataTotal, pagina, quantidade);
 
+    console.log(
+      "✅ Finalizado. Contas:",
+      adAccounts.length,
+      "| Gastos encontrados:",
+      gastos.length
+    );
     return { result, pageInfo };
   }
 

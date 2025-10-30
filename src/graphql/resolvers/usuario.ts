@@ -78,14 +78,14 @@ export class UsuarioResolver {
 
     // grava o JWT em cookie httpOnly (inacessível ao JS do browser)
     ctx.res.cookie("jwt", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // true em produção (HTTPS)
-      sameSite: "lax", // "strict" se puder
-      path: "/",
-      maxAge: 60 * 60 * 1000, // 1h
+      httpOnly: true, // protege contra XSS
+      secure: process.env.NODE_ENV === "production", // usa HTTPS em prod
+      sameSite: "lax", // "strict" se quiser bloquear ainda mais
+      path: "/", // cookie disponível para toda a app
+      maxAge: 60 * 1000, // ⏰ expira em 1 minuto (milissegundos)
     });
 
-    // opcional: pode retornar o token (compatibilidade) ou uma flag de sucesso
-    return { token }; // ou: return { token: "" };
+    // opcional: retorna o token (compatibilidade) ou flag de sucesso
+    return { token };
   }
 }
