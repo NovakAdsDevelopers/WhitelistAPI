@@ -23,6 +23,7 @@ import {
 import { intervaloUltimos6Dias } from "./inter/util";
 import { startCronJobs } from "./cronJobs";
 import { fetchFacebookToken } from "./meta/services/Token";
+import { recalcularGastosDiarios } from "./meta/services/gastoDiario";
 
 // ────────────────────────────────────────────────────────────────────────────────
 // ENV & APP
