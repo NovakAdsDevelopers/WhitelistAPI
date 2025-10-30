@@ -128,7 +128,7 @@ export class UsuarioService {
           tipo: usuario.tipo,
         },
         SECRET_KEY,
-        { expiresIn: "1m" } // 🔥 expira em 1 minuto
+        { expiresIn: "1h" } // 🔥 expira em 1 minuto
       );
 
       return { token }; // Retornando um objeto com a chave "token"

@@ -82,7 +82,7 @@ export class UsuarioResolver {
       secure: process.env.NODE_ENV === "production", // usa HTTPS em prod
       sameSite: "lax", // "strict" se quiser bloquear ainda mais
       path: "/", // cookie disponível para toda a app
-      maxAge: 60 * 1000, // ⏰ expira em 1 minuto (milissegundos)
+       maxAge: 60 * 1000, // ⏰ expira em 1 minuto (milissegundos)
     });
 
     // opcional: retorna o token (compatibilidade) ou flag de sucesso
