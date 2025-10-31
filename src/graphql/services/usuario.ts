@@ -108,18 +108,18 @@ export class UsuarioService {
     }
   }
 
-  async login(email: string, senha: string) {
+  async login(email: string, senha: string, ctx?: any) {
     try {
       const usuario = await prisma.usuario.findUnique({ where: { email } });
-      if (!usuario) {
-        throw new Error("Usuário ou senha inválidos.");
-      }
+      if (!usuario) throw new Error("Usuário ou senha inválidos.");
 
       const senhaValida = await bcrypt.compare(senha, usuario.senha);
-      if (!senhaValida) {
-        throw new Error("Usuário ou senha inválidos.");
-      }
+      if (!senhaValida) throw new Error("Usuário ou senha inválidos.");
 
+      // Definindo tempo único de expiração (1 hora)
+      const EXPIRE_SECONDS = 60 * 60; // 1h
+
+      // Gerar token JWT
       const token = jwt.sign(
         {
           id: usuario.id,
@@ -128,12 +128,25 @@ export class UsuarioService {
           tipo: usuario.tipo,
         },
         SECRET_KEY,
-        { expiresIn: "1h" } // 🔥 expira em 1 minuto
+        { expiresIn: EXPIRE_SECONDS } // ⏰ 1 hora
       );
 
-      return { token }; // Retornando um objeto com a chave "token"
-    } catch (error) {
-      throw new Error(`Erro ao fazer login: ${error}`);
+      // Se estiver usando Apollo (GraphQL) com ctx.res:
+      if (ctx?.res) {
+        ctx.res.cookie("jwt", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          maxAge: EXPIRE_SECONDS * 1000, // ⏰ 1h (em milissegundos)
+        });
+      }
+
+      console.log(`✅ Login bem-sucedido para ${usuario.email}`);
+      return { token };
+    } catch (error: any) {
+      console.error("❌ Erro ao fazer login:", error.message);
+      throw new Error("Usuário ou senha inválidos.");
     }
   }
 }

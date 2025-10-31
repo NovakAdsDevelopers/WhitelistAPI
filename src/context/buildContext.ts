@@ -1,12 +1,8 @@
-// src/context/buildContext.ts
 import jwt from "jsonwebtoken";
 import type { PrismaClient } from "@prisma/client";
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
 
-// ================================
-// Tipos do contexto
-// ================================
 export type UserCtx = {
   id: number;
   nome: string;
@@ -23,37 +19,33 @@ export type MyContext = {
 
 type JwtPayload = { id: number; iat?: number; exp?: number };
 
-// ================================
-// Factory do contexto do Apollo
-// ================================
-export function buildContextFactory(
-  prisma: PrismaClient,
-  SECRET_KEY: string
-): (args: { req: Request; res: Response }) => Promise<MyContext> {
-  return async function buildContext({
-    req,
-    res,
-  }: {
-    req: Request;
-    res: Response;
-  }): Promise<MyContext> {
+export function buildContextFactory(prisma: PrismaClient, SECRET_KEY: string) {
+  return async ({ req, res }: { req: Request; res: Response }) => {
     const requestId = crypto.randomUUID();
     const token = req.cookies?.jwt;
 
-    // requisição anônima (sem cookie)
     if (!token) {
+      console.log("👤 [CTX] Requisição sem token — anônima");
       return { req, res, requestId };
     }
 
     try {
       const decoded = jwt.verify(token, SECRET_KEY) as JwtPayload;
 
+      if (!decoded?.id) {
+        console.warn("⚠️ [CTX] Token sem ID válido");
+        return { req, res, requestId };
+      }
+
       const user = await prisma.usuario.findUnique({
         where: { id: decoded.id },
         select: { id: true, nome: true, email: true, tipo: true },
       });
 
-      if (!user) return { req, res, requestId };
+      if (!user) {
+        console.warn("⚠️ [CTX] Usuário não encontrado para ID", decoded.id);
+        return { req, res, requestId };
+      }
 
       return {
         req,
@@ -66,21 +58,15 @@ export function buildContextFactory(
           tipo: user.tipo as UserCtx["tipo"],
         },
       };
-    } catch (err: unknown) {
-      const message = (err as Error)?.message || "Erro ao validar JWT";
-
-      // ⚠️ Aqui NÃO lançamos erro, apenas registramos
-      if (message.includes("jwt expired") || message.includes("TokenExpiredError")) {
-        console.warn("⚠️ JWT expirado no buildContext (ignorado para login)");
-        return { req, res, requestId };
+    } catch (err: any) {
+      const message = err.message ?? "";
+      if (message.includes("jwt expired")) {
+        console.warn("⚠️ [CTX] JWT expirado — contexto anônimo");
+      } else if (message.includes("invalid token")) {
+        console.warn("⚠️ [CTX] JWT inválido — contexto anônimo");
+      } else {
+        console.warn("⚠️ [CTX] Erro inesperado:", message);
       }
-
-      if (message.includes("invalid token") || message.includes("JsonWebTokenError")) {
-        console.warn("⚠️ JWT inválido no buildContext (ignorado)");
-        return { req, res, requestId };
-      }
-
-      console.warn("⚠️ Erro inesperado no buildContext:", message);
       return { req, res, requestId };
     }
   };

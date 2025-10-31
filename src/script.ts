@@ -24,6 +24,7 @@ import { intervaloUltimos6Dias } from "./inter/util";
 import { startCronJobs } from "./cronJobs";
 import { fetchFacebookToken } from "./meta/services/Token";
 import { recalcularGastosDiarios } from "./meta/services/gastoDiario";
+import { consultarExtratoJob, salvarExtratoJob } from "./inter/extrato-service";
 
 // ────────────────────────────────────────────────────────────────────────────────
 // ENV & APP
@@ -107,16 +108,17 @@ app.get("/update-tokens", async (req, res) => {
       try {
         console.log(`🔄 Renovando token para: ${token.title}`);
 
-        await fetchFacebookToken(
-          token.client_id,
-          token.secret_id,
-          token.title
-        );
+        await fetchFacebookToken(token.client_id, token.secret_id, token.title);
 
         results[token.title] = "✅ Token atualizado com sucesso";
       } catch (innerError: any) {
-        console.error(`❌ Erro ao renovar token de ${token.title}:`, innerError);
-        results[token.title] = `❌ Falha ao atualizar: ${innerError.message || "erro desconhecido"}`;
+        console.error(
+          `❌ Erro ao renovar token de ${token.title}:`,
+          innerError
+        );
+        results[token.title] = `❌ Falha ao atualizar: ${
+          innerError.message || "erro desconhecido"
+        }`;
       }
     }
 
@@ -461,98 +463,58 @@ app.get("/consult-pix/:codigo", async (req, res) => {
   }
 });
 
-type TipoOperacao = "C" | "D";
+export type TipoOperacao = "C" | "D";
 
 export type TransacaoExtrato = {
-  dataEntrada: string;
-  tipoTransacao?: string;
+  /** Data de entrada ou inclusão da transação (com hora) */
+  dataInclusao?: string;
+
+  /** Data efetiva da transação (formato YYYY-MM-DD) */
+  dataTransacao?: string;
+
+  /** Data de entrada usada em versões antigas — mantida por compatibilidade */
+  dataEntrada?: string;
+
+  /** Tipo de operação: C (crédito) ou D (débito) */
   tipoOperacao?: TipoOperacao;
+
+  /** Tipo da transação (PIX, boleto, TED, etc.) */
+  tipoTransacao?: string;
+
+  /** Valor da transação */
   valor?: string | number;
+
+  /** Título da transação, caso exista */
   titulo?: string;
+
+  /** Descrição ou detalhamento da transação */
   descricao?: string;
+
+  /** Identificadores opcionais que às vezes vêm do Inter */
+  idTransacao?: string;
+  nsu?: string;
+  id?: string;
 };
+
 
 app.get("/consult-extrato", async (req, res) => {
   try {
-    const {
-      tipo,
-      tipoTransacao,
-      dataInicio: qDataInicio,
-      dataFim: qDataFim,
-      order: qOrder,
-      pagina: qPagina,
-      tamanhoPagina: qTamanhoPagina,
-    } = req.query as {
-      tipo?: "entrada" | "saida" | "todos";
-      tipoTransacao?: string;
-      dataInicio?: string;
-      dataFim?: string;
-      order?: "asc" | "desc";
-      pagina?: string;
-      tamanhoPagina?: string;
-    };
-
-    // Definir datas padrão (6 dias atrás até hoje)
-    const { dataInicio: defInicio, dataFim: defFim } = intervaloUltimos6Dias();
-    const dataInicio =
-      qDataInicio && qDataInicio.trim() ? qDataInicio : defInicio;
-    const dataFim = qDataFim && qDataFim.trim() ? qDataFim : defFim;
-
-    // Token com escopo correto
-    const token = await getInterToken({
-      clientId: process.env.INTER_CLIENT_ID!,
-      clientSecret: process.env.INTER_CLIENT_SECRET!,
-      scope: "extrato.read",
-      passphrase: process.env.INTER_CERT_PASSPHRASE,
+    const result = await consultarExtratoJob({
+      tipo: req.query.tipo as any,
+      tipoTransacao: req.query.tipoTransacao as string,
+      dataInicio: req.query.dataInicio as string,
+      dataFim: req.query.dataFim as string,
+      order: req.query.order as "asc" | "desc",
+      pagina: req.query.pagina ? Number(req.query.pagina) : undefined,
+      tamanhoPagina: req.query.tamanhoPagina
+        ? Number(req.query.tamanhoPagina)
+        : undefined,
     });
 
-    // Mapeia tipo para tipoOperacao
-    let tipoOperacao: TipoOperacao | undefined;
-    if (tipo === "entrada") tipoOperacao = "C";
-    else if (tipo === "saida") tipoOperacao = "D";
-
-    // Consulta o extrato completo (enriquecido)
-    const extrato = await consultarExtratoCompleto({
-      token,
-      dataInicio,
-      dataFim,
-      pagina: Number(qPagina ?? 0),
-      tamanhoPagina: Number(qTamanhoPagina ?? 1000),
-      tipoOperacao,
-      tipoTransacao: tipoTransacao?.trim() || undefined,
-    });
-
-    // Normaliza lista
-    let transacoes: TransacaoExtrato[] =
-      extrato.transacoes ?? extrato.movimentacoes ?? [];
-
-    // Ordenação padrão
-    const order = qOrder === "asc" ? "asc" : "desc";
-    transacoes.sort((a, b) => {
-      const da = a.dataEntrada ?? "";
-      const db = b.dataEntrada ?? "";
-      const cmp = db.localeCompare(da);
-      return order === "desc" ? cmp : -cmp;
-    });
-
-    // Retorno final
-    return res.json({
-      periodo: { dataInicio, dataFim },
-      filtros: {
-        tipo: tipo ?? "todos",
-        tipoTransacao: tipoTransacao ?? "todos",
-        order,
-      },
-      pagina: Number(qPagina ?? 0),
-      tamanhoPagina: Number(qTamanhoPagina ?? 1000),
-      totalTransacoes: transacoes.length,
-      transacoes,
-    });
+    res.json(result);
   } catch (error: any) {
-    console.error("❌ Erro na consulta de extrato completo:", error);
-    return res
-      .status(500)
-      .json({ error: error?.message || "Erro ao consultar extrato completo." });
+    console.error("❌ Erro na rota /consult-extrato:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -724,12 +686,16 @@ app.post("/bms/associate-adaccounts/:idIntegracao", async (req, res) => {
   }
 });
 
+
+
 // ────────────────────────────────────────────────────────────────────────────────
 // STARTUP
 // ────────────────────────────────────────────────────────────────────────────────
 (async () => {
   console.log("🚀 Meta API iniciado");
-  startCronJobs();
+   console.log("🕓 Iniciando automações CRON..");
+   startCronJobs();
 })();
+
 
 export { app as metaSync };

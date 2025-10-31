@@ -76,16 +76,17 @@ export class UsuarioResolver {
   ) {
     const { token } = await this.usuarioService.login(email, senha);
 
-    // grava o JWT em cookie httpOnly (inacessível ao JS do browser)
+    // 🔥 Definir 1 hora de expiração com precisão em milissegundos
+    const umaHoraMs = 60 * 60 * 1000;
+
     ctx.res.cookie("jwt", token, {
-      httpOnly: true, // protege contra XSS
-      secure: process.env.NODE_ENV === "production", // usa HTTPS em prod
-      sameSite: "lax", // "strict" se quiser bloquear ainda mais
-      path: "/", // cookie disponível para toda a app
-       maxAge: 60 * 1000, // ⏰ expira em 1 minuto (milissegundos)
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: umaHoraMs, // 1 hora exata
     });
 
-    // opcional: retorna o token (compatibilidade) ou flag de sucesso
     return { token };
   }
 }

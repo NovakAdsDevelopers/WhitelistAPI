@@ -336,3 +336,19 @@ model Anexo {
 
   @@index([aulaId])
 }
+
+
+model ExtratoTransacaoInter {
+  id             Int       @id @default(autoincrement())
+  externalId     String?   @unique
+  fingerprint    String?   @unique
+  dataEntrada    DateTime?
+  dataEfetivacao DateTime?
+  valor          Decimal
+  descricao      String?
+  tipoOperacao   String?
+  tipoTransacao  String?
+  raw            Json
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
