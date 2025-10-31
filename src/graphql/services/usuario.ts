@@ -108,7 +108,7 @@ export class UsuarioService {
     }
   }
 
-  async login(email: string, senha: string, ctx?: any) {
+  async login(email: string, senha: string) {
     try {
       const usuario = await prisma.usuario.findUnique({ where: { email } });
       if (!usuario) throw new Error("Usuário ou senha inválidos.");
@@ -116,10 +116,8 @@ export class UsuarioService {
       const senhaValida = await bcrypt.compare(senha, usuario.senha);
       if (!senhaValida) throw new Error("Usuário ou senha inválidos.");
 
-      // Definindo tempo único de expiração (1 hora)
       const EXPIRE_SECONDS = 60 * 60; // 1h
 
-      // Gerar token JWT
       const token = jwt.sign(
         {
           id: usuario.id,
@@ -128,19 +126,8 @@ export class UsuarioService {
           tipo: usuario.tipo,
         },
         SECRET_KEY,
-        { expiresIn: EXPIRE_SECONDS } // ⏰ 1 hora
+        { expiresIn: EXPIRE_SECONDS }
       );
-
-      // Se estiver usando Apollo (GraphQL) com ctx.res:
-      if (ctx?.res) {
-        ctx.res.cookie("jwt", token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          path: "/",
-          maxAge: EXPIRE_SECONDS * 1000, // ⏰ 1h (em milissegundos)
-        });
-      }
 
       console.log(`✅ Login bem-sucedido para ${usuario.email}`);
       return { token };

@@ -31,16 +31,30 @@ app.use(cookieParser());
 app.use(express.json());
 
 // ====================================================================
-// 🔓 Configuração segura de CORS
+// 🌍 Configuração dinâmica e segura de CORS
 // ====================================================================
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const NODE_ENV = process.env.NODE_ENV || "development";
+const isProd = NODE_ENV === "production";
+
+// Se for produção, exige variável FRONTEND_URL, senão usa localhost
+const FRONTEND_URL =
+  process.env.FRONTEND_URL ||
+  (isProd
+    ? (() => {
+        console.error("❌ FRONTEND_URL não definida em produção!");
+        process.exit(1);
+      })()
+    : "http://localhost:5173");
 
 app.use(
   cors({
     origin: FRONTEND_URL,
-    credentials: true,
+    credentials: true, // ✅ necessário para cookies cross-site
   })
 );
+
+console.log(`🌐 Ambiente: ${NODE_ENV}`);
+console.log(`🌍 FRONTEND_URL: ${FRONTEND_URL}`);
 
 // ====================================================================
 // 🚀 Função principal de inicialização
@@ -58,20 +72,18 @@ const startServer = async () => {
       process.exit(1);
     }
 
-    const isDev = process.env.NODE_ENV !== "production";
-
     // ----------------------------------------------------------------
-    // ⚙️ Apollo Server com plugins corretos
+    // ⚙️ Apollo Server
     // ----------------------------------------------------------------
     const server = new ApolloServer({
       schema,
       persistedQueries: false,
       cache: "bounded",
       context: buildContextFactory(prisma, SECRET_KEY),
-      introspection: isDev,
-      plugins: isDev
-        ? [ApolloServerPluginLandingPageLocalDefault({ embed: true })] // OK
-        : [ApolloServerPluginLandingPageProductionDefault()], // sem argumentos
+      introspection: !isProd, // introspection só em dev
+      plugins: isProd
+        ? [ApolloServerPluginLandingPageProductionDefault()]
+        : [ApolloServerPluginLandingPageLocalDefault({ embed: true })],
     });
 
     await server.start();
@@ -79,17 +91,27 @@ const startServer = async () => {
     server.applyMiddleware({
       app,
       path: "/graphql",
-      cors: false,
+      cors: false, // ❗ já configuramos CORS acima
     });
 
+    // ----------------------------------------------------------------
+    // 🛰️ MetaSync
+    // ----------------------------------------------------------------
     app.use("/meta", metaSync);
     console.log("🔗 MetaSync rodando na rota /meta");
 
+    // ----------------------------------------------------------------
+    // 🚀 Inicialização do servidor HTTP
+    // ----------------------------------------------------------------
     const port = process.env.PORT || 4000;
     app.listen(port, () => {
       console.log(`🚀 Servidor GraphQL rodando em: http://localhost:${port}/graphql`);
       console.log(`🌍 CORS liberado para: ${FRONTEND_URL}`);
-      console.log(isDev ? "🧪 Apollo Sandbox habilitado (modo dev)" : "🔒 Modo produção (Sandbox desativado)");
+      console.log(
+        isProd
+          ? "🔒 Modo produção (Apollo Sandbox desativado)"
+          : "🧪 Apollo Sandbox habilitado (modo dev)"
+      );
     });
   } catch (error) {
     console.error("❌ Erro ao iniciar o servidor:", error);

@@ -72,19 +72,16 @@ export class UsuarioResolver {
   async Login(
     @Arg("email") email: string,
     @Arg("senha") senha: string,
-    @Ctx() ctx: any // Apollo injeta { req, res } aqui
+    @Ctx() ctx: any
   ) {
     const { token } = await this.usuarioService.login(email, senha);
 
-    // 🔥 Definir 1 hora de expiração com precisão em milissegundos
-    const umaHoraMs = 60 * 60 * 1000;
-
     ctx.res.cookie("jwt", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: true, // 🔒 necessário em HTTPS
+      sameSite: "none", // ✅ permite cross-site
       path: "/",
-      maxAge: umaHoraMs, // 1 hora exata
+      maxAge: 60 * 60 * 1000, // 1 hora
     });
 
     return { token };
