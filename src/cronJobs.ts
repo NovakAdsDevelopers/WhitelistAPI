@@ -9,6 +9,7 @@ import { recalcularGastosDiarios } from "./meta/services/gastoDiario";
 import { fetchAllAdAccounts } from "./meta/services/AdAccounts";
 import { fetchFacebookToken } from "./meta/services/Token";
 import { consultarExtratoJob, salvarExtratoJob } from "./inter/extrato-service";
+import { ajusteDiarioLimitesAlerta, autoDisparoAlertas } from "./meta/services/limite";
 
 // Se você tiver funções auxiliares importadas de outros módulos
 // como "autoDisparoAlertas" ou "ajusteDiarioLimitesAlerta", importe-as aqui.
@@ -19,55 +20,55 @@ export function startCronJobs() {
   console.log("🕓 Iniciando automações CRON...");
 
   // CRON: Atualizações de gasto de contas a cada 30 minutos
-  // cron.schedule("*/30 * * * *", async () => {
-  //   if (isSyncRunning) {
-  //     console.warn(
-  //       "⏳ CRON: Sincronização já em andamento. Ignorando nova execução."
-  //     );
-  //     return;
-  //   }
+  cron.schedule("*/30 * * * *", async () => {
+    if (isSyncRunning) {
+      console.warn(
+        "⏳ CRON: Sincronização já em andamento. Ignorando nova execução."
+      );
+      return;
+    }
 
-  //   isSyncRunning = true;
-  //   const startTime = new Date();
-  //   console.log("🔄 [CRON] Iniciando sincronização geral das contas...");
+    isSyncRunning = true;
+    const startTime = new Date();
+    console.log("🔄 [CRON] Iniciando sincronização geral das contas...");
 
-  //   try {
-  //     const tokens = await prisma.token.findMany();
-  //     console.log(`🔹 [CRON] ${tokens.length} tokens encontrados.`);
+    try {
+      const tokens = await prisma.token.findMany();
+      console.log(`🔹 [CRON] ${tokens.length} tokens encontrados.`);
 
-  //     const results: Record<string, any> = {};
+      const results: Record<string, any> = {};
 
-  //     for (const token of tokens) {
-  //       try {
-  //         console.log(`🔄 [CRON] Sincronizando contas para: ${token.title}`);
-  //         results[token.title] = await fetchAllAdAccounts(token.token);
-  //       } catch (err) {
-  //         console.error(`❌ [CRON] Falha ao sincronizar ${token.title}:`, err);
-  //       }
-  //     }
+      for (const token of tokens) {
+        try {
+          console.log(`🔄 [CRON] Sincronizando contas para: ${token.title}`);
+          results[token.title] = await fetchAllAdAccounts(token.token);
+        } catch (err) {
+          console.error(`❌ [CRON] Falha ao sincronizar ${token.title}:`, err);
+        }
+      }
 
-  //     console.log("✅ [CRON] Sincronização de contas concluída com sucesso.");
-  //   } catch (error: any) {
-  //     console.error(
-  //       "❌ [CRON] Erro na sincronização geral:",
-  //       error.message || error
-  //     );
-  //   } finally {
-  //     isSyncRunning = false;
-  //     const duration = ((Date.now() - startTime.getTime()) / 1000).toFixed(1);
-  //     console.log(`🕒 [CRON] Execução finalizada (${duration}s).`);
-  //   }
-  // });
+      console.log("✅ [CRON] Sincronização de contas concluída com sucesso.");
+    } catch (error: any) {
+      console.error(
+        "❌ [CRON] Erro na sincronização geral:",
+        error.message || error
+      );
+    } finally {
+      isSyncRunning = false;
+      const duration = ((Date.now() - startTime.getTime()) / 1000).toFixed(1);
+      console.log(`🕒 [CRON] Execução finalizada (${duration}s).`);
+    }
+  });
 
   // CRON: Ajuste de alertas a cada 30 minutos
-  // cron.schedule("*/30 * * * *", async () => {
-  //   try {
-  //     console.log("⚠️ CRON: Disparando alertas automáticos...");
-  //     await autoDisparoAlertas();
-  //   } catch (error) {
-  //     console.error("❌ CRON erro ao disparar alertas:", error);
-  //   }
-  // });
+  //  cron.schedule("*/30 * * * *", async () => {
+  //    try {
+  //      console.log("⚠️ CRON: Disparando alertas automáticos...");
+  //      await autoDisparoAlertas();
+  //    } catch (error) {
+  //      console.error("❌ CRON erro ao disparar alertas:", error);
+  //    }
+  //  });
 
   // CRON: Tarefa às 9h para ajustes diários
   // cron.schedule("0 9 * * *", async () => {
