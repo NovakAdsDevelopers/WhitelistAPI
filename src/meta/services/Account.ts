@@ -59,10 +59,46 @@ async function atualizarContaExistente(
   const fromStatus: number = existing.status; // status anterior (int)
   const toStatus: number = account.account_status ?? account.status; // status atual (int)
 
+  // Log detalhado dos valores que queremos validar
+  console.debug("[status-check] Valores atuais", {
+    fromStatus,
+    toStatus,
+    existingStatus: existing.status,
+    accountStatus: account.account_status ?? account.status,
+    accountId: account?.id,
+    balanceRaw: account.balance ?? existing.saldoMeta ?? "0",
+  });
+
   if (fromStatus !== toStatus) {
-    await salvarStatusConta(account, fromStatus, {
-      // usa o balance "bruto" em cents para manter o comportamento atual
-      valueOverride: String(account.balance ?? existing.saldoMeta ?? "0"),
+    console.info("[status-check] Mudança de status detectada", {
+      de: fromStatus,
+      para: toStatus,
+      accountId: account?.id,
+    });
+
+    try {
+      await salvarStatusConta(account, fromStatus, {
+        // usa o balance "bruto" em cents para manter o comportamento atual
+        valueOverride: String(account.balance ?? existing.saldoMeta ?? "0"),
+      });
+      console.info("[status-check] Status salvo com sucesso", {
+        accountId: account?.id,
+        fromStatus,
+        toStatus,
+      });
+    } catch (err) {
+      console.error("[status-check] Falha ao salvar status", {
+        accountId: account?.id,
+        fromStatus,
+        toStatus,
+        error: (err as Error)?.message,
+      });
+      throw err; // repropaga se quiser tratar acima
+    }
+  } else {
+    console.debug("[status-check] Sem mudança de status", {
+      accountId: account?.id,
+      status: fromStatus,
     });
   }
 
