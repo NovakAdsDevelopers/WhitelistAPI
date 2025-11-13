@@ -352,3 +352,13 @@ model ExtratoTransacaoInter {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
+
+model Log {
+  id          Int      @id @default(autoincrement())
+  origem      String   // "graphql", "express", "automacao", "frontend"
+  tipo        String   // "erro", "aviso", "info", "critico"
+  mensagem    String
+  pilha       String?
+  contexto    Json?
+  criadoEm    DateTime @default(now())
+}

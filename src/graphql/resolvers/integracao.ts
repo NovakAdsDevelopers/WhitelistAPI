@@ -15,9 +15,20 @@ import { IntegracaoModel, IntegracaoResult } from "../models/integracao";
 import { IntegracaoCreateInput } from "../inputs/integracao";
 import { AuthMiddleware } from "../../middlewares/AuthMiddleware";
 
+
+@Resolver()
+export class TestResolver {
+  @Mutation(() => Boolean)
+  boom(): boolean {
+    throw new Error("teste-log-graphql");
+  }
+}
+
 @Resolver()
 export class IntegracaoResolver {
   private integracaoService = new IntegracaoService();
+
+
 
   @Query(() => IntegracaoResult)
   @UseMiddleware(AuthMiddleware)

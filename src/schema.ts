@@ -12,7 +12,9 @@ import {
   Integracao,
   GastoDiario,
   Usuario,
+  TestError
 } from "./graphql/resolvers";
+import { GraphQLErrorLogger } from "./middlewares/graphqlErrorMiddleware";
 
 export const createSchema = async () => {
   return buildSchema({
@@ -28,6 +30,8 @@ export const createSchema = async () => {
       Integracao,
       GastoDiario,
       Usuario,
+      TestError
     ],
+    globalMiddlewares: [GraphQLErrorLogger],
   });
 };

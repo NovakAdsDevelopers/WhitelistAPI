@@ -108,31 +108,33 @@ export async function fetchAdAccountsByIds(accountIds: string[]) {
 
   const results: any[] = [];
 
+  // ============================================================
+  // 1) Buscar informações das contas no Meta
+  // ============================================================
   for (const accountId of accountIds) {
     try {
-      // 1️⃣ Descobrir a BM associada à conta
+      // Buscar no banco
       const adAccount = await prisma.adAccount.findUnique({
         where: { id: accountId },
         include: {
-          BM: {
-            include: { token: true }, // pega o token associado
-          },
+          BM: { include: { token: true } },
         },
       });
 
-      if (!adAccount || !adAccount.BM || !adAccount.BM.token) {
+      if (!adAccount?.BM?.token) {
         console.warn(
           `⚠️ Conta ${accountId} não está associada a nenhuma BM/token.`
         );
         continue;
       }
 
-      const token = adAccount.BM.token.token; // pega o token correto
+      const token = adAccount.BM.token.token;
+
       console.log(
         `🔑 Usando token da BM (${adAccount.BM.nome}) para conta ${accountId}`
       );
 
-      // 2️⃣ Chamar a API do Meta com o token correto
+      // Buscar no Meta
       const response = await axios.get(
         `https://graph.facebook.com/v23.0/act_${accountId}`,
         {
@@ -143,40 +145,64 @@ export async function fetchAdAccountsByIds(accountIds: string[]) {
           },
         }
       );
-      // 3️⃣ Montar resultado
+
       if (response.data) {
         console.log(
           `🔹 Dados recebidos para conta ${accountId}:`,
           response.data
         );
+
         results.push({
           ...response.data,
           account_id: accountId,
         });
+
         console.log(`✅ Conta ${accountId} carregada com sucesso.`);
       }
     } catch (error) {
-      console.error(`❌ Erro ao buscar conta ${accountId}:`, error);
+      console.error(
+        `❌ Erro ao buscar conta ${accountId}:`,
+        );
     }
   }
 
-  // 4️⃣ Salvar/atualizar no banco
-  if (results.length > 0) {
-    // aqui pode ser que cada conta use um token diferente, então talvez precise salvar uma a uma
-    for (const account of results) {
+  // ============================================================
+  // 2) Salvar e atualizar contas — CADA uma protegida por try/catch
+  // ============================================================
+  if (results.length === 0) {
+    console.log("⚠️ Nenhuma conta válida encontrada para atualizar.");
+    return;
+  }
+
+  for (const account of results) {
+    try {
       const adAccount = await prisma.adAccount.findUnique({
         where: { id: account.account_id },
         include: { BM: { include: { token: true } } },
       });
 
-      if (adAccount?.BM?.token) {
-        await saveOrUpdateAdAccounts([account], adAccount.BM.token.token);
+      if (!adAccount?.BM?.token) {
+        console.warn(
+          `⚠️ Conta ${account.account_id} não possui token associado ao salvar.`
+        );
+        continue;
       }
+
+      // SALVAMENTO COM TRY/CATCH GARANTIDO
+      await saveOrUpdateAdAccounts([account], adAccount.BM.token.token);
+
+      console.log(`💾 Conta ${account.account_id} atualizada com sucesso.`);
+    } catch (err) {
+      console.error(
+        `❌ ERRO ao salvar/atualizar conta ${account.account_id}:`,
+        
+      );
     }
-  } else {
-    console.log("⚠️ Nenhuma conta válida encontrada para atualizar.");
   }
+
+  console.log("✅ Finalizado processamento de todas as contas.");
 }
+
 // Busca e salva gasto diário dos últimos 7 dias
 export async function fetchAdAccountDailySpend(
   accountId: string,

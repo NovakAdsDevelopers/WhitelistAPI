@@ -218,32 +218,24 @@ app.get("/sync-ads/:ad_account_id", async (req, res) => {
 
 app.post("/sync-ads-by-ids", async (req, res) => {
   const { account_ids } = req.body;
+
   if (!Array.isArray(account_ids) || !account_ids.length) {
     return res.status(400).json({ error: "IDs inválidos" });
   }
+
   const cleanIds = account_ids.map((id: string) =>
     String(id).replace(/^act_/, "")
   );
-  try {
-    // divide em lotes para evitar requests gigantes
-    const chunkSize = 20;
-    const chunks: string[][] = [];
-    for (let i = 0; i < cleanIds.length; i += chunkSize)
-      chunks.push(cleanIds.slice(i, i + chunkSize));
 
-    await runPool(chunks, async (ids) => {
-      await fetchAdAccountsByIds(ids);
-      return { count: ids.length };
-    });
+  // deixa qualquer erro estourar pro middleware global
+  await fetchAdAccountsByIds(cleanIds);
 
-    res.json({
-      message: "✅ Contas sincronizadas",
-      synchronized_accounts: cleanIds,
-    });
-  } catch (error) {
-    handleError(res, error, "Erro ao sincronizar múltiplas contas");
-  }
+  return res.json({
+    message: "✅ Contas sincronizadas",
+    synchronized_accounts: cleanIds,
+  });
 });
+
 
 app.post("/sync-bms", async (_req, res) => {
   try {

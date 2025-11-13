@@ -5,7 +5,10 @@ import cors from "cors";
 import cron from "node-cron";
 
 import { prisma } from "./database";
-import { fetchAllAdAccounts } from "./meta/services/AdAccounts";
+import {
+  fetchAdAccountsByIds,
+  fetchAllAdAccounts,
+} from "./meta/services/AdAccounts";
 import {
   associateBMsTOAdAccounts,
   createORupdateBMs,
@@ -25,6 +28,7 @@ import { startCronJobs } from "./cronJobs";
 import { fetchFacebookToken } from "./meta/services/Token";
 import { recalcularGastosDiarios } from "./meta/services/gastoDiario";
 import { consultarExtratoJob, salvarExtratoJob } from "./inter/extrato-service";
+import { handleError } from "./utils/handleError";
 
 // ────────────────────────────────────────────────────────────────────────────────
 // ENV & APP
@@ -32,7 +36,12 @@ import { consultarExtratoJob, salvarExtratoJob } from "./inter/extrato-service";
 dotenv.config();
 
 const app = express();
-app.use(cors({ origin: "*", credentials: true }));
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -93,6 +102,45 @@ app.get("/sync-ads/:date?", async (req, res) => {
       .status(500)
       .json({ error: error.message ?? "Erro na sincronização." });
   }
+});
+
+app.post("/sync-ads-by-ids", async (req, res) => {
+  const { account_ids } = req.body;
+
+  if (!Array.isArray(account_ids) || !account_ids.length) {
+    return res.status(400).json({ error: "IDs inválidos" });
+  }
+
+  const cleanIds = account_ids.map((id: string) =>
+    String(id).replace(/^act_/, "")
+  );
+
+  try {
+    await fetchAdAccountsByIds(cleanIds);
+
+    res.json({
+      message: "✅ Contas sincronizadas",
+      synchronized_accounts: cleanIds,
+    });
+  } catch (error) {
+    handleError(res, error, "Erro ao sincronizar múltiplas contas");
+  }
+});
+
+app.get("/sync-ads/ad_account/:ad_account_id", async (req, res, next) => {
+  const { ad_account_id } = req.params;
+
+  if (!ad_account_id) {
+    return res.status(400).json({ error: "ID inválido" });
+  }
+
+  const cleanId = String(ad_account_id).replace(/^act_/, "");
+
+  await fetchAdAccountsByIds([cleanId]);
+
+  return res.json({
+    message: `✅ Conta ${cleanId} sincronizada`,
+  });
 });
 
 app.get("/update-tokens", async (req, res) => {
@@ -496,7 +544,6 @@ export type TransacaoExtrato = {
   id?: string;
 };
 
-
 app.get("/consult-extrato", async (req, res) => {
   try {
     const result = await consultarExtratoJob({
@@ -686,16 +733,32 @@ app.post("/bms/associate-adaccounts/:idIntegracao", async (req, res) => {
   }
 });
 
+// Rota que lança erro síncrono (gera 500 -> loga)
+app.get("/test-error-sync", (_req, _res) => {
+  throw new Error("teste-log-express-sync");
+});
 
+// Rota que lança erro assíncrono (gera 500 -> loga)
+app.get("/test-error-async", async (_req, _res, next) => {
+  try {
+    throw new Error("teste-log-express-async");
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Rota ok (controle)
+app.get("/test-ok", (_req, res) => {
+  res.json({ ok: true });
+});
 
 // ────────────────────────────────────────────────────────────────────────────────
 // STARTUP
 // ────────────────────────────────────────────────────────────────────────────────
 (async () => {
   console.log("🚀 Meta API iniciado");
-   console.log("🕓 Iniciando automações CRON..");
-   startCronJobs();
+  console.log("🕓 Iniciando automações CRON..");
+  startCronJobs();
 })();
-
 
 export { app as metaSync };

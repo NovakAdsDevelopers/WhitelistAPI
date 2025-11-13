@@ -13,6 +13,7 @@ import { createSchema } from "./schema";
 import { prisma } from "./database";
 import { metaSync } from "./script";
 import { buildContextFactory } from "./context/buildContext";
+import { expressErrorHandler } from "./middlewares/expressErrorLog";
 
 const app: Application = express();
 
@@ -99,13 +100,15 @@ const startServer = async () => {
     // ----------------------------------------------------------------
     app.use("/meta", metaSync);
     console.log("🔗 MetaSync rodando na rota /meta");
-
+    app.use(expressErrorHandler());
     // ----------------------------------------------------------------
     // 🚀 Inicialização do servidor HTTP
     // ----------------------------------------------------------------
     const port = process.env.PORT || 4000;
     app.listen(port, () => {
-      console.log(`🚀 Servidor GraphQL rodando em: http://localhost:${port}/graphql`);
+      console.log(
+        `🚀 Servidor GraphQL rodando em: http://localhost:${port}/graphql`
+      );
       console.log(`🌍 CORS liberado para: ${FRONTEND_URL}`);
       console.log(
         isProd

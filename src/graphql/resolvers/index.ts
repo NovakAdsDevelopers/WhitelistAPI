@@ -8,6 +8,9 @@ export { ContaTransacaoResolver as ContaTransacao } from "./conta-transacao";
 export { ContaLimiteResolver as ContaLimite } from "./conta-limites"
 export { InsightsResolver as Insights } from "./insights"
 export { IntegracaoResolver as Integracao } from "./integracao"
+export { TestResolver as TestError } from "./integracao"
+
+
 
 
 export { GastoDiarioResolver as GastoDiario } from "./gasto-diario"
