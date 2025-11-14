@@ -94,10 +94,10 @@ model AdAccountStatusChange {
 }
 
 model ClienteContaAnuncio {
-  id             Int    @id @default(autoincrement())
-  clienteId      Int
-  contaAnuncioId String
-
+  id               Int       @id @default(autoincrement())
+  clienteId        Int
+  contaAnuncioId   String
+  nomeContaCliente String?
   inicioAssociacao DateTime  @default(now())
   fimAssociacao    DateTime?
 
@@ -181,47 +181,46 @@ model BM {
 }
 
 model MetaPix {
-  id              String   @id @default(cuid())
+  id              String  @id @default(cuid())
   accountId       String
   bmId            String
   bmNome          String
   usuarioId       String
   usuarioNome     String
-  valor           Decimal  @db.Decimal(16, 2)
-  codigoCopiaCola String   // código "copia e cola" do PIX
-  imageUrl        String   // URL Cloudinary da imagem do QR
+  valor           Decimal @db.Decimal(16, 2)
+  codigoCopiaCola String // código "copia e cola" do PIX
+  imageUrl        String // URL Cloudinary da imagem do QR
 
   // (opcionais, mas úteis para auditoria/relatórios)
-  tipoRetorno       String?     // p.ex.: "APROVACAO"
-  codigoSolicitacao String?     // id de solicitação retornado pela API
-  dataPagamento     DateTime?   // data do pagamento (se houver)
-  dataOperacao      DateTime?   // data da operação (criação)
+  tipoRetorno       String? // p.ex.: "APROVACAO"
+  codigoSolicitacao String? // id de solicitação retornado pela API
+  dataPagamento     DateTime? // data do pagamento (se houver)
+  dataOperacao      DateTime? // data da operação (criação)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // 🔗 Associação com AdAccount
   conta AdAccount @relation(fields: [accountId], references: [id], name: "AdAccountToMetaPix")
 
+  @@unique([codigoCopiaCola], map: "uq_metapix_codigo")
   // Índices/constraints úteis
   @@index([accountId, createdAt], map: "idx_metapix_account_created")
-  @@unique([codigoCopiaCola], map: "uq_metapix_codigo")
 }
 
-
 model Token {
-  id         Int      @id @default(autoincrement())
-  title      String   @unique
-  client_id  String   @unique
-  secret_id  String   @unique
-  last_token String   @unique
-  token      String   @unique
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  situacao  String?  @default("ATIVO")
+  id         Int       @id @default(autoincrement())
+  title      String    @unique
+  client_id  String    @unique
+  secret_id  String    @unique
+  last_token String    @unique
+  token      String    @unique
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  situacao   String?   @default("ATIVO")
   spend_date DateTime?
   // Relação inversa
-  bms BM[]
+  bms        BM[]
 }
 
 enum TipoUsuario {
@@ -337,7 +336,6 @@ model Anexo {
   @@index([aulaId])
 }
 
-
 model ExtratoTransacaoInter {
   id             Int       @id @default(autoincrement())
   externalId     String?   @unique
@@ -354,11 +352,11 @@ model ExtratoTransacaoInter {
 }
 
 model Log {
-  id          Int      @id @default(autoincrement())
-  origem      String   // "graphql", "express", "automacao", "frontend"
-  tipo        String   // "erro", "aviso", "info", "critico"
-  mensagem    String
-  pilha       String?
-  contexto    Json?
-  criadoEm    DateTime @default(now())
+  id       Int      @id @default(autoincrement())
+  origem   String // "graphql", "express", "automacao", "frontend"
+  tipo     String // "erro", "aviso", "info", "critico"
+  mensagem String
+  pilha    String?
+  contexto Json?
+  criadoEm DateTime @default(now())
 }

@@ -7,6 +7,9 @@ export class ClienteContaAnuncioCreateInput {
   contaAnuncioId!: string;
 
   @Field()
+  nomeContaCliente!: string;
+
+  @Field()
   inicioAssociacao!: Date;
 
   @Field({ nullable: true })

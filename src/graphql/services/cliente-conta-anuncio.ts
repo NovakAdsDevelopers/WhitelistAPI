@@ -28,6 +28,7 @@ export class ClienteContaAnuncioService {
         select: {
           id: true,
           clienteId: true,
+          nomeContaCliente: true,
           contaAnuncioId: true,
           inicioAssociacao: true,
           fimAssociacao: true,
@@ -140,10 +141,10 @@ export class ClienteContaAnuncioService {
         (total, g) => total + g.gasto.toNumber(),
         0
       );
-  
+
       return {
         ...associacao,
-        gastoTotal
+        gastoTotal,
       };
     } catch (error: any) {
       throw new Error(
@@ -160,14 +161,17 @@ export class ClienteContaAnuncioService {
       const associacoes = [];
 
       for (const conta of contas) {
-        const { contaAnuncioId, inicioAssociacao, fimAssociacao } = conta;
+        const {
+          contaAnuncioId,
+          nomeContaCliente, // 👈 pega do input
+          inicioAssociacao,
+          fimAssociacao,
+        } = conta;
 
         const ativo = !fimAssociacao || fimAssociacao > agora;
 
-        // 1. Determina o fim do período
         const dataFim = fimAssociacao ?? agora;
 
-        // 2. Soma os gastos no período
         const totalGasto = await this.prisma.gastoDiario.aggregate({
           where: {
             contaAnuncioId: contaAnuncioId,
@@ -191,21 +195,22 @@ export class ClienteContaAnuncioService {
           `Gasto total no período (centavos): ${gastoTotalEmCentavos}`
         );
 
-        // 3. Cria a associação com o gasto total em centavos
         const associacao = await this.prisma.clienteContaAnuncio.create({
           data: {
             clienteId,
             contaAnuncioId,
+            nomeContaCliente, // 👈 salva no banco
             inicioAssociacao,
             fimAssociacao: fimAssociacao ?? null,
             ativo,
             gastoTotal: gastoTotalEmCentavos,
-            saldo: -gastoTotalEmCentavos, // ✅ ajuste em centavos
+            saldo: -gastoTotalEmCentavos,
           },
           select: {
             id: true,
             clienteId: true,
             contaAnuncioId: true,
+            nomeContaCliente: true,
             inicioAssociacao: true,
             fimAssociacao: true,
             ativo: true,

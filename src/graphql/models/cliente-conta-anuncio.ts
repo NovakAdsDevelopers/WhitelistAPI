@@ -15,6 +15,9 @@ export class ClienteContaAnuncio {
   contaAnuncioId!: string;
 
   @Field()
+  nomeContaCliente!: string;
+
+  @Field()
   inicioAssociacao!: Date;
 
   @Field({ nullable: true })
