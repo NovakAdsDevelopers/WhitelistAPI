@@ -6,13 +6,13 @@ import {
   ClienteContaAnuncioUpdateInput,
   TransacaoClienteContaAnuncioInput,
 } from "../inputs/cliente-conta-anuncio";
-import { Decimal } from "@prisma/client/runtime/library";
 import { ApolloError } from "apollo-server-core";
-import { prisma } from "../../database";
+import { Decimal } from "@prisma/client/runtime/library";
 
 export class ClienteContaAnuncioService {
   private prisma = new PrismaClient();
 
+  /** Busca associações de um cliente com paginação */
   async findByClienteId(clienteId: number, pagination?: Pagination) {
     const pagina = pagination?.pagina ?? 0;
     const quantidade = pagination?.quantidade ?? 10;
@@ -40,12 +40,13 @@ export class ClienteContaAnuncioService {
         },
       });
 
+      // Buscar gastos relacionados
       const gastos = await this.prisma.gastoDiario.findMany({
         where: {
-          OR: associacoes.map((a) => ({
+          OR: associacoes.map((a: any) => ({
             contaAnuncioId: a.contaAnuncioId,
             data: {
-              gte: a.inicioAssociacao,
+              gte: a.inicioAssociacao ?? undefined,
               lte: a.fimAssociacao ?? new Date(),
             },
           })),
@@ -57,31 +58,29 @@ export class ClienteContaAnuncioService {
 
       for (const gasto of gastos) {
         const contaId = gasto.contaAnuncioId;
-
-        if (!gastosPorConta[contaId]) {
-          gastosPorConta[contaId] = 0;
-        }
-
+        if (!gastosPorConta[contaId]) gastosPorConta[contaId] = 0;
         gastosPorConta[contaId] += gasto.gasto.toNumber();
       }
 
-      // Mapear associações e calcular gastoTotal e saldo dinamicamente
-      const associacoesComGastoCalculado = associacoes.map((a) => {
+      // Mapear associações e calcular gastoTotal e saldo
+      const associacoesComGastoCalculado = associacoes.map((a: any) => {
+        const inicioPeriodo = a.inicioAssociacao ?? new Date(0);
+
         const gastoTotal = gastos
           .filter(
-            (g) =>
+            (g: any) =>
               g.contaAnuncioId === a.contaAnuncioId &&
-              g.data >= a.inicioAssociacao &&
+              g.data >= inicioPeriodo &&
               g.data <= (a.fimAssociacao ?? new Date())
           )
-          .reduce((total, g) => total + g.gasto.toNumber(), 0);
+          .reduce((total: any, g: any) => total + g.gasto.toNumber(), 0);
 
         const deposito = a.depositoTotal?.toNumber?.() ?? 0;
         const saldo = deposito / 100 - gastoTotal;
 
         return {
           ...a,
-          depositoTotal: deposito / 100, // Convertendo para reais
+          depositoTotal: deposito / 100,
           gastoTotal,
           saldo,
         };
@@ -105,7 +104,9 @@ export class ClienteContaAnuncioService {
       );
     }
   }
-  async findByAssociacaoId(associacaoId: number) {
+
+  /** Busca associação por ID */
+  async findByAssociacaoId(associacaoId: number): Promise<any> {
     try {
       const associacao = await this.prisma.clienteContaAnuncio.findUnique({
         where: { id: associacaoId },
@@ -123,29 +124,27 @@ export class ClienteContaAnuncioService {
         },
       });
 
-      if (!associacao) {
+      if (!associacao)
         throw new Error(`Associação ${associacaoId} não encontrada.`);
-      }
+
+      const dataInicio = associacao.inicioAssociacao ?? new Date();
 
       const gastos = await this.prisma.gastoDiario.findMany({
         where: {
           contaAnuncioId: associacao.contaAnuncioId,
           data: {
-            gte: associacao.inicioAssociacao,
+            gte: dataInicio,
             lte: associacao.fimAssociacao ?? new Date(),
           },
         },
       });
 
       const gastoTotal = gastos.reduce(
-        (total, g) => total + g.gasto.toNumber(),
+        (total: any, g: any) => total + g.gasto.toNumber(),
         0
       );
 
-      return {
-        ...associacao,
-        gastoTotal,
-      };
+      return { ...associacao, gastoTotal };
     } catch (error: any) {
       throw new Error(
         `Erro ao buscar associação ${associacaoId}: ${error.message ?? error}`
@@ -153,6 +152,7 @@ export class ClienteContaAnuncioService {
     }
   }
 
+  /** Cria uma ou mais associações */
   async create(data: ClienteContaAnuncioCreateManyInput) {
     const { clienteId, contas } = data;
     const agora = new Date();
@@ -163,43 +163,31 @@ export class ClienteContaAnuncioService {
       for (const conta of contas) {
         const {
           contaAnuncioId,
-          nomeContaCliente, // 👈 pega do input
+          nomeContaCliente,
           inicioAssociacao,
           fimAssociacao,
         } = conta;
-
         const ativo = !fimAssociacao || fimAssociacao > agora;
-
         const dataFim = fimAssociacao ?? agora;
 
         const totalGasto = await this.prisma.gastoDiario.aggregate({
           where: {
-            contaAnuncioId: contaAnuncioId,
-            data: {
-              gte: inicioAssociacao,
-              lte: dataFim,
-            },
+            contaAnuncioId,
+            data: { gte: inicioAssociacao, lte: dataFim },
           },
-          _sum: {
-            gasto: true,
-          },
+          _sum: { gasto: true },
         });
 
         const gastoTotalPeriodo = totalGasto._sum.gasto ?? new Decimal(0);
-
         const gastoTotalEmCentavos = Math.round(
           gastoTotalPeriodo.toNumber() * 100
-        );
-
-        console.log(
-          `Gasto total no período (centavos): ${gastoTotalEmCentavos}`
         );
 
         const associacao = await this.prisma.clienteContaAnuncio.create({
           data: {
             clienteId,
             contaAnuncioId,
-            nomeContaCliente, // 👈 salva no banco
+            nomeContaCliente,
             inicioAssociacao,
             fimAssociacao: fimAssociacao ?? null,
             ativo,
@@ -228,14 +216,16 @@ export class ClienteContaAnuncioService {
     }
   }
 
+  /** Atualiza associação */
   async update(data: ClienteContaAnuncioUpdateInput) {
-    const { id, inicioAssociacao, fimAssociacao } = data;
+    const { id, inicioAssociacao, fimAssociacao, nomeContaCliente } = data;
 
     try {
       const associacao = await this.prisma.clienteContaAnuncio.update({
         where: { id: Number(id) },
         data: {
-          inicioAssociacao,
+          nomeContaCliente: nomeContaCliente ?? null,
+          inicioAssociacao: inicioAssociacao ?? null,
           fimAssociacao: fimAssociacao ?? null,
         },
         select: {
@@ -255,6 +245,7 @@ export class ClienteContaAnuncioService {
     }
   }
 
+  /** Lança transações entre contas */
   async push(data: TransacaoClienteContaAnuncioInput) {
     const { contaOrigemId, contaDestinoId, tipo, valor, usuarioId, clienteId } =
       data;
@@ -291,7 +282,7 @@ export class ClienteContaAnuncioService {
           );
         }
 
-        const contaOrigem = await this.prisma.clienteContaAnuncio.findFirst({
+        const contaOrigem = await this.prisma.clienteContaAnuncio.findUnique({
           where: { id: contaOrigemId },
           select: { contaAnuncioId: true },
         });
@@ -426,7 +417,7 @@ export class ClienteContaAnuncioService {
             data: {
               saldo: { increment: valorDecimal },
               realocacao_entrada: { increment: valorDecimal },
-              depositoTotal: { increment: valorDecimal }, // <- opcional se considerar realocação como novo "depósito"
+              depositoTotal: { increment: valorDecimal },
             },
           }),
           this.prisma.adAccount.update({
@@ -448,10 +439,10 @@ export class ClienteContaAnuncioService {
       }
     }
 
-    // Criar transação
+    // Cria a transação
     const transacao = await this.prisma.transacaoConta.create({
       data: {
-        tipo: tipo as any,
+        tipo,
         valor: valorDecimal,
         contaOrigemId: contaAnuncioIdOrigem,
         contaDestinoId: contaAnuncioIdDestino,

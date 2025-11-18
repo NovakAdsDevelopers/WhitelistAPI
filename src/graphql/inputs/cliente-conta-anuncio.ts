@@ -23,7 +23,10 @@ export class ClienteContaAnuncioUpdateInput {
   id!: string;
 
   @Field()
-  inicioAssociacao!: Date;
+  nomeContaCliente?: string;
+
+  @Field({ nullable: true })
+  inicioAssociacao?: Date;
 
   @Field({ nullable: true })
   fimAssociacao?: Date;

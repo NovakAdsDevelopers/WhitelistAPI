@@ -98,7 +98,7 @@ model ClienteContaAnuncio {
   clienteId        Int
   contaAnuncioId   String
   nomeContaCliente String?
-  inicioAssociacao DateTime  @default(now())
+  inicioAssociacao DateTime? @default(now())
   fimAssociacao    DateTime?
 
   ativo     Boolean @default(true)
