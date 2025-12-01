@@ -117,6 +117,7 @@ export class ClienteContaAnuncioService {
           inicioAssociacao: true,
           fimAssociacao: true,
           depositoTotal: true,
+          nomeContaCliente: true,
           ativo: true,
           historico: true,
           saldo: true,

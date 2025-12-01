@@ -111,7 +111,6 @@ function eachMonthISO(startInclusive: Date, endInclusive: Date): string[] {
 export class InsightsService {
   private prisma = prismaSingleton;
 
-  // Panel: respeita o período e calcula gasto pelo GastoDiario do intervalo (EM REAIS)
   async PanelInsights(BMs: string[], startDate: string, endDate?: string) {
     const { gte, lt } = buildDateRangeByDay(startDate, endDate);
 
@@ -171,16 +170,17 @@ export class InsightsService {
         return acc + cents;
       }, 0);
 
-      const saldoMetaCentavos = lista.reduce(
-        (acc, conta) => acc + toInt(conta.saldoMeta),
-        0
-      );
+      // 👉 saldoMeta: somar apenas valores >= 0
+      const saldoMetaCentavos = lista.reduce((acc, conta) => {
+        const v = toInt(conta.saldoMeta);
+        return acc + (v >= 0 ? v : 0);
+      }, 0);
 
       return {
         quantidade: lista.length,
         gastoTotal: gastoPeriodoCentavos / 100, // reais
         saldoTotal: saldoTotalCentavos / 100, // reais
-        saldoMeta: saldoMetaCentavos, // reais
+        saldoMeta: saldoMetaCentavos, // reais ou centavos, conforme sua convenção atual
       };
     };
 
@@ -217,16 +217,28 @@ export class InsightsService {
       throw new Error(`AdAccount ${adAccountId} não encontrada`);
     }
 
-    // soma de gastos do período (REALS -> centavos)
+    // soma de gastos do período (REAIS -> centavos)
     const gastoPeriodoCentavos = adAccount.GastoDiario.reduce((acc, g) => {
       const s = (g.gasto as any)?.toString?.() ?? String(g.gasto ?? "0");
       const reais = Number(s.replace(",", ".")) || 0;
       return acc + Math.round(reais * 100);
     }, 0);
 
-    // conversões robustas (sem 'in')
+    // função segura para converter valores para centavos
+    const toCents = (v: any) => {
+      const n = Number(String(v).replace(",", ".")) || 0;
+      return Math.round(n * 100);
+    };
+
+    // ----------------------------
+    // 👉 Regras aplicadas:
+    // saldoMeta deve ignorar valores negativos
+    // ----------------------------
+    const rawSaldoMeta = Number(String(adAccount.saldoMeta)) || 0;
+    const saldoMetaCentavos = rawSaldoMeta >= 0 ? toCents(rawSaldoMeta) : 0;
+
+    // saldo total mantém comportamento normal
     const saldoTotalCentavos = toCents(adAccount.saldo);
-    const saldoMetaCentavos = toCents(adAccount.saldoMeta);
 
     // dias no intervalo [gte, lt)
     const msPorDia = 24 * 60 * 60 * 1000;
@@ -240,6 +252,7 @@ export class InsightsService {
     const saldoTotal = saldoTotalCentavos / 100; // REAIS
     const saldoMeta = saldoMetaCentavos / 100; // REAIS
     const mediaDiariaFormatted = mediaDiaria.toFixed(2);
+
     return {
       adAccountId: adAccount.id,
       periodoUTC: { gte: gte.toISOString(), lt: lt.toISOString() },
