@@ -2,9 +2,33 @@ import { PrismaClient, Cliente } from "@prisma/client";
 import { ClienteCreateInput, ClienteUpdateInput } from "../inputs/cliente";
 import { Pagination } from "../inputs/Utils";
 import getPageInfo from "../../helpers/getPageInfo";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 export class ClienteService {
   private prisma = new PrismaClient();
+
+  async login(email: string, senha: string) {
+    const cliente = await this.prisma.cliente.findUnique({ where: { email } });
+
+    if (!cliente) {
+      throw new Error("Cliente não encontrado");
+    }
+
+    const senhaValida = cliente.senha
+      ? cliente.senha === senha || (await bcrypt.compare(senha, cliente.senha))
+      : false;
+
+    if (!senhaValida) {
+      throw new Error("Senha incorreta");
+    }
+
+    const token = jwt.sign({ clienteId: cliente.id }, process.env.JWT_SECRET!, {
+      expiresIn: "7d",
+    });
+
+    return { cliente, token };
+  }
 
   async findAll(pagination?: Pagination) {
     let pagina: number = 0;

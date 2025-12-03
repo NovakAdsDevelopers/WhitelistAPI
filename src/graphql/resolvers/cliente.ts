@@ -6,6 +6,7 @@ import {
   ID,
   Int,
   UseMiddleware,
+  Ctx,
 } from "type-graphql";
 import { ClienteService } from "../services/cliente";
 import { ClienteCreateInput, ClienteUpdateInput } from "../inputs/cliente";
@@ -54,5 +55,41 @@ export class ClienteResolver {
     const deletedId = await this.clienteService.delete(id);
 
     return { id: deletedId };
+  }
+
+
+
+
+
+
+  @Mutation(() => Cliente, { nullable: true })
+  async LoginCliente(
+    @Arg("email") email: string,
+    @Arg("senha") senha: string,
+    @Ctx() { res }: any
+  ) {
+    const { cliente, token } = await this.clienteService.login(email, senha);
+
+    // Define cookie HttpOnly
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: false, // coloque true em produção (https)
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias
+    });
+
+    return cliente;
+  }
+
+  @Mutation(() => Boolean)
+  async LogoutCliente(@Ctx() { res }: any) {
+    res.clearCookie("token");
+    return true;
+  }
+
+  @Query(() => Cliente, { nullable: true })
+  @UseMiddleware(AuthMiddleware)
+  async Me(@Ctx() { cliente }: any) {
+    return cliente;
   }
 }

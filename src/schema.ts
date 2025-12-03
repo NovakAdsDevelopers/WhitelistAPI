@@ -14,6 +14,9 @@ import {
   Usuario,
   TestError
 } from "./graphql/resolvers";
+import {
+ClientePanelResolver
+} from "./cliente_panel/ranking"
 import { GraphQLErrorLogger } from "./middlewares/graphqlErrorMiddleware";
 
 export const createSchema = async () => {
@@ -30,7 +33,8 @@ export const createSchema = async () => {
       Integracao,
       GastoDiario,
       Usuario,
-      TestError
+      TestError,
+      ClientePanelResolver
     ],
     globalMiddlewares: [GraphQLErrorLogger],
   });

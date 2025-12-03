@@ -20,7 +20,6 @@ export class ClienteContaAnuncioResolver {
   private service = new ClienteContaAnuncioService();
 
   @Query(() => ClienteContaAnuncioResult)
-  @UseMiddleware(AuthMiddleware)
   async GetContasAssociadasPorCliente(
     @Arg("clienteId") clienteId: number,
     @Arg("pagination", () => Pagination, { nullable: true })
