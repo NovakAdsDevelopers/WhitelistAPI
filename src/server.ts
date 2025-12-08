@@ -32,30 +32,43 @@ app.use(cookieParser());
 app.use(express.json());
 
 // ====================================================================
-// 🌍 Configuração dinâmica e segura de CORS
+// 🌍 Configuração de CORS com múltiplos domínios
 // ====================================================================
 const NODE_ENV = process.env.NODE_ENV || "development";
 const isProd = NODE_ENV === "production";
 
-// Se for produção, exige variável FRONTEND_URL, senão usa localhost
-const FRONTEND_URL =
-  process.env.FRONTEND_URL ||
-  (isProd
-    ? (() => {
-        console.error("❌ FRONTEND_URL não definida em produção!");
-        process.exit(1);
-      })()
-    : "http://localhost:5173");
+// Lê lista de URLs do .env
+const envOrigins = process.env.FRONTEND_URLS
+  ? process.env.FRONTEND_URLS.split(",").map((url) => url.trim())
+  : [];
+
+// Domínios permitidos
+const allowedOrigins = isProd
+  ? envOrigins // Produção → exige lista no .env
+  : [
+      "http://localhost:5173",
+      ...envOrigins, // Também permite os domínios do .env em dev
+    ];
+
+console.log("🌐 Ambiente:", NODE_ENV);
+console.log("🌍 Allowed Origins:", allowedOrigins);
 
 app.use(
   cors({
-    origin: FRONTEND_URL,
-    credentials: true, // ✅ necessário para cookies cross-site
+    origin: (origin, callback) => {
+      // Permite requisições sem origin (ex: Postman)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.error("❌ CORS bloqueou a origem:", origin);
+      return callback(new Error("Origem não permitida pelo CORS"));
+    },
+    credentials: true,
   })
 );
-
-console.log(`🌐 Ambiente: ${NODE_ENV}`);
-console.log(`🌍 FRONTEND_URL: ${FRONTEND_URL}`);
 
 // ====================================================================
 // 🚀 Função principal de inicialização
@@ -81,7 +94,7 @@ const startServer = async () => {
       persistedQueries: false,
       cache: "bounded",
       context: buildContextFactory(prisma, SECRET_KEY),
-      introspection: !isProd, // introspection só em dev
+      introspection: !isProd,
       plugins: isProd
         ? [ApolloServerPluginLandingPageProductionDefault()]
         : [ApolloServerPluginLandingPageLocalDefault({ embed: true })],
@@ -92,7 +105,7 @@ const startServer = async () => {
     server.applyMiddleware({
       app,
       path: "/graphql",
-      cors: false, // ❗ já configuramos CORS acima
+      cors: false, // ❗ CORS já está configurado acima
     });
 
     // ----------------------------------------------------------------
@@ -100,7 +113,9 @@ const startServer = async () => {
     // ----------------------------------------------------------------
     app.use("/meta", metaSync);
     console.log("🔗 MetaSync rodando na rota /meta");
+
     app.use(expressErrorHandler());
+
     // ----------------------------------------------------------------
     // 🚀 Inicialização do servidor HTTP
     // ----------------------------------------------------------------
@@ -109,7 +124,7 @@ const startServer = async () => {
       console.log(
         `🚀 Servidor GraphQL rodando em: http://localhost:${port}/graphql`
       );
-      console.log(`🌍 CORS liberado para: ${FRONTEND_URL}`);
+      console.log(`🌍 CORS liberado para:`, allowedOrigins);
       console.log(
         isProd
           ? "🔒 Modo produção (Apollo Sandbox desativado)"
