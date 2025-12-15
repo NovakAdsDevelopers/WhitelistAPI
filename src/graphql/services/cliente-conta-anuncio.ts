@@ -22,15 +22,19 @@ export class ClienteContaAnuncioService {
         where: { clienteId },
         skip: pagina * quantidade,
         take: quantidade,
+        // Se você estiver em Postgres, pode usar nulls:last. Se não, troque pelo simples.
         orderBy: {
-          inicioAssociacao: "desc",
+          inicioAssociacao: {
+            sort: "desc",
+            nulls: "last",
+          },
         },
         select: {
           id: true,
           clienteId: true,
           nomeContaCliente: true,
           contaAnuncioId: true,
-          inicioAssociacao: true,
+          inicioAssociacao: true, // pode ser null
           fimAssociacao: true,
           depositoTotal: true,
           ativo: true,
@@ -40,47 +44,48 @@ export class ClienteContaAnuncioService {
         },
       });
 
-      // Buscar gastos relacionados
-      const gastos = await this.prisma.gastoDiario.findMany({
-        where: {
-          OR: associacoes.map((a: any) => ({
-            contaAnuncioId: a.contaAnuncioId,
-            data: {
-              gte: a.inicioAssociacao ?? undefined,
-              lte: a.fimAssociacao ?? new Date(),
-            },
-          })),
-        },
-      });
+      // ✅ Regra: se não tem inicioAssociacao, NÃO calcula gastos (fica 0)
+      const associacoesComInicio = associacoes.filter(
+        (a) => a.inicioAssociacao
+      );
 
-      // Agrupar gastos por contaAnuncioId
+      const gastos =
+        associacoesComInicio.length === 0
+          ? []
+          : await this.prisma.gastoDiario.findMany({
+              where: {
+                OR: associacoesComInicio.map((a) => ({
+                  contaAnuncioId: a.contaAnuncioId,
+                  data: {
+                    gte: a.inicioAssociacao!, // aqui é seguro, pois filtramos acima
+                    lte: a.fimAssociacao ?? new Date(),
+                  },
+                })),
+              },
+            });
+
+      // ✅ Tipagem: use string como chave (funciona para number/uuid/bigint)
       const gastosPorConta: Record<string, number> = {};
 
       for (const gasto of gastos) {
-        const contaId = gasto.contaAnuncioId;
-        if (!gastosPorConta[contaId]) gastosPorConta[contaId] = 0;
-        gastosPorConta[contaId] += gasto.gasto.toNumber();
+        const contaKey = String(gasto.contaAnuncioId);
+        gastosPorConta[contaKey] =
+          (gastosPorConta[contaKey] ?? 0) + gasto.gasto.toNumber();
       }
 
-      // Mapear associações e calcular gastoTotal e saldo
-      const associacoesComGastoCalculado = associacoes.map((a: any) => {
-        const inicioPeriodo = a.inicioAssociacao ?? new Date(0);
+      const associacoesComGastoCalculado = associacoes.map((a) => {
+        const depositoCentavos = a.depositoTotal?.toNumber?.() ?? 0;
 
-        const gastoTotal = gastos
-          .filter(
-            (g: any) =>
-              g.contaAnuncioId === a.contaAnuncioId &&
-              g.data >= inicioPeriodo &&
-              g.data <= (a.fimAssociacao ?? new Date())
-          )
-          .reduce((total: any, g: any) => total + g.gasto.toNumber(), 0);
+        // ✅ Regra: sem início => gastoTotal = 0
+        const gastoTotal = a.inicioAssociacao
+          ? gastosPorConta[String(a.contaAnuncioId)] ?? 0
+          : 0;
 
-        const deposito = a.depositoTotal?.toNumber?.() ?? 0;
-        const saldo = deposito / 100 - gastoTotal;
+        const saldo = depositoCentavos / 100 - gastoTotal;
 
         return {
           ...a,
-          depositoTotal: deposito / 100,
+          depositoTotal: depositoCentavos / 100,
           gastoTotal,
           saldo,
         };

@@ -17,11 +17,11 @@ export class ClienteContaAnuncio {
   @Field()
   nomeContaCliente!: string;
 
-  @Field()
-  inicioAssociacao!: Date;
+  @Field(() => Date, { nullable: true })
+  inicioAssociacao?: Date | null;
 
-  @Field({ nullable: true })
-  fimAssociacao!: Date;
+  @Field(() => Date, { nullable: true })
+  fimAssociacao?: Date | null;
 
   @Field()
   ativo!: boolean;
