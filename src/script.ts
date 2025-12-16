@@ -38,7 +38,7 @@ dotenv.config();
 const app = express();
 app.use(
   cors({
-    origin: process.env.FRONTEND_URLS || "http://localhost:5173",
+    origin: "https://whitelist-rosy.vercel.app",
     credentials: true,
   })
 );
