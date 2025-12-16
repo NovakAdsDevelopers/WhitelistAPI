@@ -1,4 +1,12 @@
 {
+  "name": "whitelist-api",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@prisma/client": "^5.19.0",
     "apollo-server-core": "^3.13.0",
@@ -32,10 +40,13 @@
     "nodemon": "^3.1.9",
     "prisma": "^5.19.0",
     "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.2"
   },
   "scripts": {
-    "dev": "nodemon"
+    "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
+    "build": "prisma generate && tsc",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy"
   }
 }
