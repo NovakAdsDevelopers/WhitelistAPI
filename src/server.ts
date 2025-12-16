@@ -46,7 +46,7 @@ const envOrigins = process.env.FRONTEND_URLS
 const allowedOrigins = isProd
   ? envOrigins // Produção → exige lista no .env
   : [
-      "http://localhost:5173",
+      "https://whitelist-rosy.vercel.app",
       ...envOrigins, // Também permite os domínios do .env em dev
     ];
 
