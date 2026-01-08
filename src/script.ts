@@ -757,8 +757,8 @@ app.get("/test-ok", (_req, res) => {
 // ────────────────────────────────────────────────────────────────────────────────
 (async () => {
   console.log("🚀 Meta API iniciado");
-  // console.log("🕓 Iniciando automações CRON..");
-  // startCronJobs();
+  console.log("🕓 Iniciando automações CRON..");
+   startCronJobs();
 })();
 
 export { app as metaSync };
