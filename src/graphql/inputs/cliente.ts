@@ -29,4 +29,12 @@ export class ClienteUpdateInput {
   @Field({ nullable: true })
   @IsEmail()
   email?: string;
+
+  @Field()
+  @IsString()
+  fee!: string;
+
+  @Field()
+  @IsString()
+  cnpj!: string;
 }

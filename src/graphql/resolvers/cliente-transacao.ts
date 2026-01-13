@@ -6,7 +6,7 @@ import {
   Int,
   UseMiddleware,
 } from "type-graphql";
-import { ClienteTransacao } from "../models/cliente-transacao"; // Model GraphQL
+import { ClienteTransacao, ComprovanteTransacao } from "../models/cliente-transacao"; // Model GraphQL
 import { TransacaoClienteInput } from "../inputs/cliente-transacao";
 import { TransacaoService } from "../services/cliente-transacao";
 import { AuthMiddleware } from "../../middlewares/AuthMiddleware";
@@ -25,6 +25,12 @@ export class ClienteTransacaoResolver {
   @UseMiddleware(AuthMiddleware)
   async GetClienteTransacaoByID(@Arg("id", () => Int) id: number) {
     return this.transacaoService.getById(id);
+  }
+
+  @Query(() => ComprovanteTransacao, { nullable: true })
+  @UseMiddleware(AuthMiddleware)
+  async GetClienteTransacaoComprovanteByID(@Arg("id", () => Int) id: number) {
+    return this.transacaoService.getComprovanteById(id);
   }
 
   @Mutation(() => ClienteTransacao)

@@ -127,6 +127,8 @@ export class ClienteService {
       data: {
         nome: data.nome,
         email: data.email,
+        fee: data.fee,
+        cnpj: data.cnpj,
       },
     });
   }

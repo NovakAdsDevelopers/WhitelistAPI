@@ -33,6 +33,12 @@ export class ClienteContaAnuncio {
   depositoTotal!: number; // Ajustado para number
 
   @Field((type) => Float) // Ajustado para Float
+  realocacao_entrada!: number; // Ajustado para number
+
+  @Field((type) => Float) // Ajustado para Float
+  realocacao_saida!: number; // Ajustado para number
+
+  @Field((type) => Float) // Ajustado para Float
   gastoTotal!: number;
 
   @Field()

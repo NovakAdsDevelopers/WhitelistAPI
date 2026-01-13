@@ -1,5 +1,6 @@
 import { ObjectType, Field, Int, Float } from "type-graphql";
 import { TipoTransacaoCliente } from "@prisma/client";
+import { Usuario } from "./usuario";
 
 @ObjectType()
 export class ClienteTransacao {
@@ -26,4 +27,11 @@ export class ClienteTransacao {
 
   @Field(() => Int)
   usuarioId!: number;
+}
+
+
+@ObjectType()
+export class ComprovanteTransacao extends ClienteTransacao {
+  @Field(() => Usuario)
+  usuario!: Usuario;
 }
